@@ -1,6 +1,16 @@
 import { useEffect, useState } from "react";
 import { getApplications } from "../../api/dictionaryApi";
+import { apiRequest } from "../../api/http";
 import ConfirmModal from "../../components/common/ConfirmModal";
+import DataTable from "../../components/DataTable";
+import {
+  APP_USER_ROLES,
+  formatRolesSummary,
+  formToRoles,
+  getAppRoleLabel,
+  getAppUserRole,
+  rolesToForm,
+} from "../../utils/roles";
 
 const EMPTY_FORM = {
   id: null,
@@ -13,34 +23,10 @@ const EMPTY_FORM = {
 const EMPTY_ROLES = { isSystemAdmin: false, apps: {} };
 
 async function api(method, path, body) {
-  const res = await fetch(path, {
+  return apiRequest(path, {
     method,
-    headers: { "Content-Type": "application/json" },
     body: body ? JSON.stringify(body) : undefined,
   });
-  const payload = await res.json();
-  if (!res.ok) throw new Error(payload.error || "Request failed.");
-  return payload;
-}
-
-function rolesToForm(roles) {
-  const isSystemAdmin = roles.some((r) => r.application === "system" && r.role === "admin");
-  const apps = {};
-  for (const r of roles) {
-    if (r.application !== "system") apps[r.application] = true;
-  }
-  return { isSystemAdmin, apps };
-}
-
-function formToRoles(roleForm) {
-  const roles = [];
-  if (roleForm.isSystemAdmin) {
-    roles.push({ application: "system", role: "admin" });
-  }
-  for (const [app, granted] of Object.entries(roleForm.apps)) {
-    if (granted) roles.push({ application: app, role: "member" });
-  }
-  return roles;
 }
 
 function AdminUsersPage() {
@@ -98,7 +84,7 @@ function AdminUsersPage() {
     const errors = {};
     if (!f.username.trim()) errors.username = "Username is required.";
     if (!f.id && !f.password) errors.password = "Password is required for new users.";
-    if (f.password && f.password.length < 4) errors.password = "Password must be at least 4 characters.";
+    if (f.password && f.password.length < 8) errors.password = "Password must be at least 8 characters.";
     if (f.password && f.password !== f.confirm_password) errors.confirm_password = "Passwords do not match.";
     return errors;
   };
@@ -163,8 +149,8 @@ function AdminUsersPage() {
 
   return (
     <div>
-      <div className="row" style={{ marginBottom: "0.75rem" }}>
-        <h2 style={{ margin: 0 }}>Users</h2>
+      <div className="toolbar">
+        <h2>Users</h2>
         <button type="button" onClick={resetForm}>New User</button>
       </div>
 
@@ -248,29 +234,44 @@ function AdminUsersPage() {
           {applications.length > 0 && (
             <div style={{ marginTop: "0.65rem", paddingTop: "0.65rem", borderTop: "1px solid var(--border)" }}>
               <p style={{ margin: "0 0 0.5rem", fontSize: "0.88rem", color: "var(--muted-text)", fontWeight: 600 }}>
-                Application Access
+                Application roles
               </p>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: "0.65rem" }}>
-                {applications.map((app) => (
-                  <label
-                    key={app.name}
-                    style={{
-                      flexDirection: "row",
-                      alignItems: "center",
-                      gap: "0.4rem",
-                      cursor: roleForm.isSystemAdmin ? "default" : "pointer",
-                      opacity: roleForm.isSystemAdmin ? 0.5 : 1,
-                    }}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={roleForm.isSystemAdmin || Boolean(roleForm.apps[app.name])}
-                      disabled={roleForm.isSystemAdmin}
-                      onChange={(e) => toggleAppRole(app.name, e.target.checked)}
-                    />
-                    {app.title}
-                  </label>
-                ))}
+              <p style={{ margin: "0 0 0.65rem", fontSize: "0.82rem", color: "var(--muted-text)" }}>
+                Grant one basic role per app. Users without a role cannot see or open that app.
+              </p>
+              <div style={{ display: "flex", flexDirection: "column", gap: "0.55rem" }}>
+                {applications.map((app) => {
+                  const roleName = getAppUserRole(app.name) || APP_USER_ROLES[app.name];
+                  const roleLabel = roleName ? getAppRoleLabel(roleName) : app.title;
+                  return (
+                    <label
+                      key={app.name}
+                      style={{
+                        flexDirection: "row",
+                        alignItems: "flex-start",
+                        gap: "0.5rem",
+                        cursor: roleForm.isSystemAdmin ? "default" : "pointer",
+                        opacity: roleForm.isSystemAdmin ? 0.5 : 1,
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={roleForm.isSystemAdmin || Boolean(roleForm.apps[app.name])}
+                        disabled={roleForm.isSystemAdmin}
+                        onChange={(e) => toggleAppRole(app.name, e.target.checked)}
+                        style={{ marginTop: "0.2rem" }}
+                      />
+                      <span>
+                        <strong>{roleLabel}</strong>
+                        <span style={{ color: "var(--muted-text)", fontSize: "0.85rem" }}>
+                          {" "}
+                          — {app.title}
+                          {roleName ? ` (${roleName})` : ""}
+                        </span>
+                      </span>
+                    </label>
+                  );
+                })}
               </div>
               {roleForm.isSystemAdmin && (
                 <p style={{ margin: "0.4rem 0 0", fontSize: "0.82rem", color: "var(--muted-text)" }}>
@@ -290,6 +291,23 @@ function AdminUsersPage() {
               Cancel
             </button>
           )}
+          {isEditing && (
+            <button
+              type="button"
+              className="danger-button"
+              style={{ marginLeft: "0.5rem" }}
+              onClick={() =>
+                setDeleteTarget(
+                  users.find((u) => u.id === form.id) ?? {
+                    id: form.id,
+                    username: form.username,
+                  }
+                )
+              }
+            >
+              Delete
+            </button>
+          )}
         </div>
       </form>
 
@@ -300,54 +318,28 @@ function AdminUsersPage() {
       {loading ? (
         <p>Loading...</p>
       ) : (
-        <div className="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>id</th>
-                <th>username</th>
-                <th>display name</th>
-                <th>roles</th>
-                <th>action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {users.map((user) => {
-                const sysAdmin = user.roles?.some(
-                  (r) => r.application === "system" && r.role === "admin"
-                );
-                const appRoles = user.roles
-                  ?.filter((r) => r.application !== "system")
-                  .map((r) => r.application)
-                  .join(", ");
-                return (
-                  <tr key={user.id}>
-                    <td>{user.id}</td>
-                    <td>{user.username}</td>
-                    <td>{user.display_name ?? ""}</td>
-                    <td>
-                      {sysAdmin ? (
-                        <strong>System Admin</strong>
-                      ) : (
-                        appRoles || <span style={{ color: "var(--muted-text)" }}>none</span>
-                      )}
-                    </td>
-                    <td>
-                      <button type="button" onClick={() => startEdit(user)}>Edit</button>
-                      <button
-                        type="button"
-                        className="danger-button"
-                        onClick={() => setDeleteTarget(user)}
-                      >
-                        Delete
-                      </button>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+        <DataTable
+          storageKey="data-table:admin:users"
+          columns={["id", "username", "display_name", "roles_summary"]}
+          rows={users.map((user) => ({
+            ...user,
+            roles_summary: formatRolesSummary(user.roles ?? []),
+          }))}
+          columnLabels={{
+            display_name: "display name",
+            roles_summary: "roles",
+          }}
+          formatCell={(column, value) => {
+            if (column === "roles_summary" && value === "none") {
+              return <span style={{ color: "var(--muted-text)" }}>none</span>;
+            }
+            if (column === "roles_summary" && value === "System Admin") {
+              return <strong>System Admin</strong>;
+            }
+            return null;
+          }}
+          onRowClick={(user) => startEdit(user)}
+        />
       )}
 
       {deleteTarget && (

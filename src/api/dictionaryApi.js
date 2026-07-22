@@ -1,4 +1,5 @@
 import { runQuery } from "./dbApi";
+import { apiRequest } from "./http";
 
 const SYSTEM_DICTIONARY_TABLE = "system_dictionary";
 const APPLICATIONS_TABLE = "applications";
@@ -71,7 +72,7 @@ export async function getFieldDefinitions(tableName, application) {
   const result = await runQuery({
     table: SYSTEM_DICTIONARY_TABLE,
     sql: `
-      SELECT d."table" AS table_name, d.name, d.label, d.data_type, d.ref_table, d.required, d.sort_order
+      SELECT d."table" AS table_name, d.name, d.label, d.data_type, d.ref_table, d.ref_label_field, d.required, d.sort_order
       FROM system_dictionary d
       LEFT JOIN applications a ON a.id = d.application_id
       WHERE d.type = 'field' AND d."table" = ?
@@ -87,14 +88,8 @@ export async function getFieldDefinitions(tableName, application) {
 }
 
 export async function reseedDictionary() {
-  const response = await fetch("/api/admin/reseed-dictionary", {
+  return apiRequest("/api/admin/reseed-dictionary", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({}),
   });
-  const payload = await response.json();
-  if (!response.ok) {
-    throw new Error(payload.error || "Unable to reseed dictionary.");
-  }
-  return payload;
 }

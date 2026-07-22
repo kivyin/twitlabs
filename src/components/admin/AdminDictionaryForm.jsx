@@ -127,8 +127,19 @@ function AdminDictionaryForm({
           <input
             value={form.ref_table}
             onChange={(event) => onFormChange({ ...form, ref_table: event.target.value })}
+            placeholder="accounts"
           />
         </label>
+        {form.type === "field" && (
+          <label>
+            ref_label_field
+            <input
+              value={form.ref_label_field}
+              onChange={(event) => onFormChange({ ...form, ref_label_field: event.target.value })}
+              placeholder="name"
+            />
+          </label>
+        )}
         <label>
           required
           <select

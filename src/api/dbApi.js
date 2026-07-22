@@ -1,26 +1,15 @@
-async function request(path, body) {
-  const response = await fetch(path, {
+import { apiRequest } from "./http";
+import { invalidateForeignKeyLabelCache } from "../utils/foreignKeyLabelCache";
+
+function request(path, body) {
+  return apiRequest(path, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-
-  const payload = await response.json();
-  if (!response.ok) {
-    throw new Error(payload.error || "Request failed.");
-  }
-
-  return payload;
 }
 
 export async function getTables() {
-  const response = await fetch("/api/db/tables");
-  const payload = await response.json();
-
-  if (!response.ok) {
-    throw new Error(payload.error || "Unable to load tables.");
-  }
-
+  const payload = await apiRequest("/api/db/tables");
   return payload.tables;
 }
 
@@ -38,18 +27,50 @@ export function selectRows({
   where = "",
   whereParams = [],
   limit,
+  offset,
+  orderBy,
+  orderDirection,
+  countTotal = false,
 }) {
-  return runCrud({ action: "select", table, columns, where, whereParams, limit });
+  return runCrud({
+    action: "select",
+    table,
+    columns,
+    where,
+    whereParams,
+    limit,
+    offset,
+    orderBy,
+    orderDirection,
+    countTotal,
+  });
 }
 
-export function insertRow({ table, data }) {
-  return runCrud({ action: "insert", table, data });
+export async function insertRow({ table, data }) {
+  const result = await runCrud({ action: "insert", table, data });
+  invalidateForeignKeyLabelCache(table);
+  return result;
 }
 
-export function updateRows({ table, data, where, whereParams = [] }) {
-  return runCrud({ action: "update", table, data, where, whereParams });
+export async function updateRows({ table, data, where, whereParams = [] }) {
+  const result = await runCrud({ action: "update", table, data, where, whereParams });
+  invalidateForeignKeyLabelCache(table);
+  return result;
 }
 
-export function deleteRows({ table, where, whereParams = [] }) {
-  return runCrud({ action: "delete", table, where, whereParams });
+export async function deleteRows({ table, where, whereParams = [] }) {
+  const result = await runCrud({ action: "delete", table, where, whereParams });
+  invalidateForeignKeyLabelCache(table);
+  return result;
+}
+
+export async function clearTable(table) {
+  const result = await runCrud({ action: "clear", table });
+  invalidateForeignKeyLabelCache(table);
+  return result;
+}
+
+/** Bulk id→label maps for referenced tables (local SQLite API). */
+export function fetchReferenceLabels(refs = []) {
+  return request("/api/db/reference-labels", { refs });
 }

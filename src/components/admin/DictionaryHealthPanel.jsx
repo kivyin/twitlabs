@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import DataTable from "../DataTable";
 
 const healthSections = [
   { key: "duplicates", title: "Duplicate keys" },
@@ -44,36 +45,15 @@ function DictionaryHealthPanel({ health, onJumpToEntry }) {
       </ul>
 
       {expanded && uniqueRows[expanded].length > 0 && (
-        <div className="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>id</th>
-                <th>table</th>
-                <th>name</th>
-                <th>label</th>
-                <th>type</th>
-                <th>action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {uniqueRows[expanded].map((entry) => (
-                <tr key={`${expanded}-${entry.id}`}>
-                  <td>{entry.id}</td>
-                  <td>{entry.table ?? ""}</td>
-                  <td>{entry.name}</td>
-                  <td>{entry.label}</td>
-                  <td>{entry.type}</td>
-                  <td>
-                    <button type="button" onClick={() => onJumpToEntry(entry)}>
-                      Jump to Edit
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <DataTable
+          storageKey={`data-table:admin:dictionary-health:${expanded}`}
+          columns={["id", "table", "name", "label", "type"]}
+          rows={uniqueRows[expanded].map((entry) => ({
+            ...entry,
+            table: entry.table ?? "",
+          }))}
+          onRowClick={(entry) => onJumpToEntry(entry)}
+        />
       )}
     </section>
   );

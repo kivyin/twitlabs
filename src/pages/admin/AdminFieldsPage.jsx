@@ -15,6 +15,7 @@ const EMPTY_FORM = {
   type: "field",
   data_type: "",
   ref_table: "",
+  ref_label_field: "",
   required: 0,
   sort_order: 0,
 };
@@ -97,6 +98,7 @@ function AdminFieldsPage() {
       type: "field",
       data_type: entry.data_type ?? "",
       ref_table: entry.ref_table ?? "",
+      ref_label_field: entry.ref_label_field ?? "",
       required: Number(entry.required ?? 0),
       sort_order: Number(entry.sort_order ?? 0),
     });
@@ -136,6 +138,7 @@ function AdminFieldsPage() {
         type: "field",
         data_type: form.data_type.trim() || null,
         ref_table: form.ref_table.trim() || null,
+        ref_label_field: form.ref_label_field.trim() || null,
         required: Number(form.required) ? 1 : 0,
         sort_order: Number(form.sort_order) || 0,
       };
@@ -178,8 +181,8 @@ function AdminFieldsPage() {
 
   return (
     <div>
-      <div className="row" style={{ marginBottom: "0.75rem" }}>
-        <h2 style={{ margin: 0 }}>Fields</h2>
+      <div className="toolbar">
+        <h2>Fields</h2>
         <button type="button" onClick={resetForm}>
           New Field
         </button>
@@ -197,9 +200,19 @@ function AdminFieldsPage() {
         onSubmit={handleSave}
       />
       {form.id && (
-        <button type="button" style={{ marginTop: "0.5rem" }} onClick={resetForm}>
-          Cancel
-        </button>
+        <>
+          <button type="button" style={{ marginTop: "0.5rem" }} onClick={resetForm}>
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="danger-button"
+            style={{ marginTop: "0.5rem", marginLeft: "0.5rem" }}
+            onClick={() => setDeleteTarget(form)}
+          >
+            Delete
+          </button>
+        </>
       )}
 
       {status && <p className="status">{status}</p>}
@@ -209,11 +222,7 @@ function AdminFieldsPage() {
       {loading ? (
         <p>Loading...</p>
       ) : (
-        <AdminDictionaryTable
-          entries={filteredEntries}
-          onEdit={startEdit}
-          onDeleteRequest={setDeleteTarget}
-        />
+        <AdminDictionaryTable entries={filteredEntries} onEdit={startEdit} />
       )}
 
       {deleteTarget && (

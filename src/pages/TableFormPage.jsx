@@ -1,13 +1,49 @@
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
-import { insertRow, runQuery, selectRows, updateRows } from "../api/dbApi";
+import { Link, useParams } from "react-router-dom";
+import { getAccountJointUsers, setAccountJointUsers } from "../api/budgetApi";
+import { deleteRows, insertRow, runQuery, selectRows, updateRows } from "../api/dbApi";
 import { getCollectionDefinition, getFieldDefinitions } from "../api/dictionaryApi";
+import AccountImageUpload from "../components/AccountImageUpload";
+import AccountBalanceTrendChart from "../components/AccountBalanceTrendChart";
+import AccountTransactionsPanel from "../components/AccountTransactionsPanel";
+import SpendingByCategoryPieChart from "../components/SpendingByCategoryPieChart";
 import TableFormFields from "../components/TableFormFields";
-import { buildForeignKeyOptionLabel, normalizeValue } from "../utils/tableForm";
+import ConfirmModal from "../components/common/ConfirmModal";
+import FormActions from "../components/FormActions";
+import PageHeader from "../components/PageHeader";
+import { useBrowseReturn } from "../hooks/useBrowseReturn";
+import { getRecordLabel, normalizeValue } from "../utils/tableForm";
+import {
+  getMoneyFieldHint,
+  getSignedAmountClass,
+  isLiabilityAccountType,
+  isMoneyField,
+  normalizeBudgetMoneyField,
+} from "../utils/money";
+import {
+  filterAccountFormColumns,
+  filterVisibleAccountFormColumns,
+  getHiddenAccountFieldDefaults,
+  isSiteAccountType,
+  shouldShowSpendingByCategoryChart,
+  sortAccountFormColumns,
+} from "../utils/accounts";
+import { formatCurrency } from "../utils/format";
+import { filterEditableColumns, isAuditField } from "../utils/auditFields";
+import {
+  loadForeignKeyResources,
+  resolveReferenceLabel,
+} from "../utils/foreignKeyLabels";
+import {
+  formatUserReferenceValue,
+  isUsersRefField,
+} from "../utils/userReferences";
+import { useAuth } from "../context/AuthContext";
+import { useUserLabelMap } from "../hooks/useUserLabelMap";
 
 function TableFormPage() {
   const { appName = "budget", table, recordId } = useParams();
-  const navigate = useNavigate();
+  const { goBack } = useBrowseReturn(`/app/${appName}/${table}`);
   const isEdit = Boolean(recordId);
   const [columns, setColumns] = useState([]);
   const [pkColumn, setPkColumn] = useState("id");
@@ -16,9 +52,38 @@ function TableFormPage() {
   const [foreignKeys, setForeignKeys] = useState({});
   const [fkOptions, setFkOptions] = useState({});
   const [formData, setFormData] = useState({});
+  const [labelMaps, setLabelMaps] = useState({});
+  const [jointUserIds, setJointUserIds] = useState([]);
+  const [userOptions, setUserOptions] = useState([]);
   const [error, setError] = useState("");
   const [status, setStatus] = useState("");
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [refTableByColumn, setRefTableByColumn] = useState({});
+  const [relatedReady, setRelatedReady] = useState(false);
+  const userLabelMap = useUserLabelMap();
+  const { user, isAdmin } = useAuth();
+  const accountTypeName = resolveReferenceLabel(
+    formData.account_type_id,
+    labelMaps.account_types ?? {}
+  );
+
+  useEffect(() => {
+    setRelatedReady(false);
+  }, [appName, recordId, table]);
+
+  useEffect(() => {
+    if (loading || !isEdit || table !== "accounts") {
+      return undefined;
+    }
+
+    // Defer related data until after the main form has painted.
+    const frameId = window.requestAnimationFrame(() => {
+      setRelatedReady(true);
+    });
+    return () => window.cancelAnimationFrame(frameId);
+  }, [isEdit, loading, table]);
 
   useEffect(() => {
     async function load() {
@@ -53,30 +118,28 @@ function TableFormPage() {
           sql: `PRAGMA foreign_key_list(${table})`,
         });
         const fkRows = fkInfo.rows ?? [];
-        const fkMap = Object.fromEntries(
-          fkRows.map((fk) => [fk.from, { refTable: fk.table, refColumn: fk.to || "id" }])
-        );
-        setForeignKeys(fkMap);
 
-        const loadedFkOptions = await Promise.all(
-          Object.entries(fkMap).map(async ([columnName, meta]) => {
-            const referencedRows = await selectRows({ table: meta.refTable, limit: 500 });
-            const options = (referencedRows.rows ?? [])
-              .filter(
-                (row) =>
-                  row[meta.refColumn] !== undefined &&
-                  row[meta.refColumn] !== null &&
-                  row[meta.refColumn] !== ""
-              )
-              .map((row) => ({
-                value: String(row[meta.refColumn]),
-                label: buildForeignKeyOptionLabel(row, meta.refColumn),
-              }));
+        const {
+          refMetaByColumn,
+          refTableByColumn: nextRefTableByColumn,
+          labelMaps: nextLabelMaps,
+          optionsByColumn,
+        } = await loadForeignKeyResources({
+          table,
+          fieldDefinitions,
+          pragmaForeignKeys: fkRows,
+          columns: tableColumns,
+        });
 
-            return [columnName, options];
-          })
-        );
-        setFkOptions(Object.fromEntries(loadedFkOptions));
+        setForeignKeys(refMetaByColumn);
+        setRefTableByColumn(nextRefTableByColumn);
+        setLabelMaps(nextLabelMaps);
+        setFkOptions(optionsByColumn);
+        setUserOptions(optionsByColumn.owner_user_id ?? optionsByColumn.user_id ?? []);
+
+        if (table !== "accounts") {
+          setJointUserIds([]);
+        }
 
         if (isEdit) {
           const result = await selectRows({
@@ -97,10 +160,28 @@ function TableFormPage() {
               ])
             )
           );
+          if (table === "accounts") {
+            const joint = await getAccountJointUsers(recordId);
+            setJointUserIds((joint.user_ids ?? []).map(String));
+          }
         } else {
           setFormData(
-            Object.fromEntries(tableColumns.map((column) => [column.name, ""]))
+            Object.fromEntries(
+              tableColumns.map((column) => {
+                if (table === "categories" && column.name === "tax_deductible") {
+                  return [column.name, "0"];
+                }
+                if (table === "accounts" && column.name === "is_joint") {
+                  return [column.name, "0"];
+                }
+                if (table === "accounts" && column.name === "owner_user_id" && user?.id) {
+                  return [column.name, String(user.id)];
+                }
+                return [column.name, ""];
+              })
+            )
           );
+          setJointUserIds([]);
         }
       } catch (loadError) {
         setError(loadError.message);
@@ -110,34 +191,171 @@ function TableFormPage() {
     }
 
     load();
-  }, [appName, isEdit, recordId, table]);
+  }, [appName, isEdit, recordId, table, user?.id]);
 
   const editableColumns = useMemo(() => {
-    return columns.filter((column) => {
-      const isPrimaryKey = Number(column.pk) === 1;
-      const isIdColumn = column.name.toLowerCase() === "id";
-      const isPkColumn = column.name === pkColumn;
-      return !isPrimaryKey && !isIdColumn && !isPkColumn;
-    });
-  }, [columns, pkColumn]);
+    const baseColumns = filterEditableColumns(
+      columns.filter((column) => {
+        const isPrimaryKey = Number(column.pk) === 1;
+        const isIdColumn = column.name.toLowerCase() === "id";
+        const isPkColumn = column.name === pkColumn;
+        return !isPrimaryKey && !isIdColumn && !isPkColumn;
+      })
+    );
+
+    if (table !== "accounts") {
+      return baseColumns;
+    }
+
+    return filterVisibleAccountFormColumns(
+      sortAccountFormColumns(filterAccountFormColumns(baseColumns)),
+      accountTypeName
+    );
+  }, [accountTypeName, columns, pkColumn, table]);
+
+  const readOnlyColumns = useMemo(() => {
+    if (!isEdit) {
+      return [];
+    }
+
+    return columns.filter((column) => isAuditField(column.name));
+  }, [columns, isEdit]);
+
+  const fieldInputTypes = useMemo(() => {
+    const types = {};
+
+    for (const column of editableColumns) {
+      if (isMoneyField(table, column.name)) {
+        types[column.name] = "number";
+      }
+    }
+
+    if (table === "accounts") {
+      types.login_url = "url";
+      types.site_password = "password";
+      types.notes = "textarea";
+      types.is_joint = "yesno";
+    }
+
+    if (table === "categories") {
+      types.tax_deductible = "yesno";
+    }
+
+    return types;
+  }, [editableColumns, table]);
+
+  const fieldHints = useMemo(() => {
+    const hints = {};
+
+    for (const column of editableColumns) {
+      hints[column.name] = getMoneyFieldHint(table, column.name, { accountTypeName });
+    }
+
+    if (table === "categories") {
+      hints.tax_deductible =
+        "Choose Yes to include this category in the Tax category summary report. Use No for everything else.";
+    }
+
+    if (table === "accounts") {
+      hints.owner_user_id =
+        "The person whose name is on the account (for example the cardholder). This is separate from who added the account in the app.";
+      hints.is_joint =
+        "Yes if more than one person is on the account. You can then select additional joint users.";
+    }
+
+    return hints;
+  }, [accountTypeName, editableColumns, table]);
+
+  const moneyInputProps = useMemo(() => {
+    const props = {};
+
+    for (const column of editableColumns) {
+      if (!isMoneyField(table, column.name)) {
+        continue;
+      }
+
+      props[column.name] = {
+        step: "0.01",
+      };
+
+      if (table === "budgets" && column.name === "amount") {
+        props[column.name].min = "0.01";
+      }
+    }
+
+    return props;
+  }, [editableColumns, table]);
 
   const handleChange = (name, value) => {
     setFormData((prev) => ({
       ...prev,
       [name]: value,
     }));
+
+    if (table === "accounts" && name === "is_joint" && String(value) !== "1") {
+      setJointUserIds([]);
+    }
+
+    if (table === "accounts" && name === "owner_user_id") {
+      setJointUserIds((prev) => prev.filter((id) => id !== String(value)));
+    }
+  };
+
+  const toggleJointUser = (userId, checked) => {
+    const id = String(userId);
+    setJointUserIds((prev) => {
+      if (checked) {
+        return prev.includes(id) ? prev : [...prev, id];
+      }
+      return prev.filter((value) => value !== id);
+    });
   };
 
   const handleSubmit = async (event) => {
     event.preventDefault();
+    setSaving(true);
     setError("");
     setStatus("");
 
     try {
       const data = {};
+
       for (const column of editableColumns) {
-        data[column.name] = normalizeValue(formData[column.name] ?? "", column.type);
+        if (isMoneyField(table, column.name)) {
+          data[column.name] = normalizeBudgetMoneyField(table, column.name, formData[column.name] ?? "", {
+            accountTypeName,
+          });
+        } else {
+          data[column.name] = normalizeValue(formData[column.name] ?? "", column.type, {
+            fieldName: column.name,
+          });
+        }
       }
+
+      if (table === "accounts") {
+        const hiddenDefaults = getHiddenAccountFieldDefaults(accountTypeName, formData);
+        for (const [fieldName, value] of Object.entries(hiddenDefaults)) {
+          if (isMoneyField(table, fieldName)) {
+            data[fieldName] = normalizeBudgetMoneyField(table, fieldName, value ?? "", {
+              accountTypeName,
+            });
+          } else {
+            data[fieldName] = value;
+          }
+        }
+
+        if (!isEdit && user?.id && !data.user_id) {
+          data.user_id = Number(user.id);
+        }
+
+        if (data.owner_user_id === "" || data.owner_user_id == null) {
+          data.owner_user_id = user?.id ? Number(user.id) : null;
+        }
+
+        data.is_joint = Number(data.is_joint) === 1 ? 1 : 0;
+      }
+
+      let savedAccountId = isEdit ? Number(recordId) : null;
 
       if (isEdit) {
         await updateRows({
@@ -148,41 +366,296 @@ function TableFormPage() {
         });
         setStatus("Record updated.");
       } else {
-        await insertRow({ table, data });
+        const insertResult = await insertRow({ table, data });
+        savedAccountId = Number(insertResult.lastID) || null;
         setStatus("Record created.");
       }
 
-      setTimeout(() => navigate(`/app/${appName}/${table}`), 250);
+      if (table === "accounts" && savedAccountId) {
+        await setAccountJointUsers(
+          savedAccountId,
+          Number(data.is_joint) === 1 ? jointUserIds.map(Number) : []
+        );
+      }
+
+      setTimeout(() => goBack(), 250);
     } catch (submitError) {
       setError(submitError.message);
+    } finally {
+      setSaving(false);
     }
   };
 
-  return (
-    <section className="panel">
-      <h1>{isEdit ? `Edit ${tableLabel}` : `New ${tableLabel} record`}</h1>
-      {loading && <p>Loading form...</p>}
-      {!loading && (
-        <form className="form" onSubmit={handleSubmit}>
-          <TableFormFields
-            columns={editableColumns}
-            foreignKeys={foreignKeys}
-            fkOptions={fkOptions}
-            formData={formData}
-            columnLabels={columnLabels}
-            onChange={handleChange}
-          />
-          <div className="row">
-            <button type="submit">{isEdit ? "Update" : "Create"}</button>
-            <button type="button" onClick={() => navigate(`/app/${appName}/${table}`)}>
-              Cancel
-            </button>
-          </div>
-        </form>
+  const handleDelete = async () => {
+    setSaving(true);
+    setError("");
+    setStatus("");
+
+    try {
+      await deleteRows({
+        table,
+        where: `${pkColumn} = ?`,
+        whereParams: [recordId],
+      });
+      goBack();
+    } catch (deleteError) {
+      setError(deleteError.message);
+      setSaving(false);
+      setShowDeleteConfirm(false);
+    }
+  };
+
+  const readOnlyDisplayValues = useMemo(() => {
+    const values = {};
+
+    for (const column of readOnlyColumns) {
+      const rawValue = formData[column.name];
+      if (isUsersRefField(column.name, refTableByColumn[column.name])) {
+        values[column.name] = formatUserReferenceValue(
+          column.name,
+          rawValue,
+          userLabelMap,
+          refTableByColumn
+        );
+      }
+    }
+
+    return values;
+  }, [formData, readOnlyColumns, refTableByColumn, userLabelMap]);
+
+  const recordSummary = getRecordLabel(formData, pkColumn, table);
+  const isAccountEdit = table === "accounts" && isEdit;
+  const showAccountTransactions = isAccountEdit && relatedReady;
+  const accountIsLiability = isLiabilityAccountType(accountTypeName);
+  const accountIsSite = isSiteAccountType(accountTypeName);
+
+  const accountOwnershipColumns = useMemo(() => {
+    if (table !== "accounts") {
+      return { beforeJoint: editableColumns, afterJoint: [] };
+    }
+
+    const jointIndex = editableColumns.findIndex((column) => column.name === "is_joint");
+    if (jointIndex < 0) {
+      return { beforeJoint: editableColumns, afterJoint: [] };
+    }
+
+    return {
+      beforeJoint: editableColumns.slice(0, jointIndex + 1),
+      afterJoint: editableColumns.slice(jointIndex + 1),
+    };
+  }, [editableColumns, table]);
+
+  const accountColumnLabels = {
+    ...columnLabels,
+    owner_user_id: columnLabels.owner_user_id ?? "Owner",
+    is_joint: columnLabels.is_joint ?? "Joint account",
+  };
+
+  const jointUserChoices = userOptions.filter(
+    (option) => option.value !== String(formData.owner_user_id ?? "")
+  );
+
+  const jointUsersField =
+    table === "accounts" && Number(formData.is_joint) === 1 ? (
+      <fieldset className="account-joint-users">
+        <legend>Joint users</legend>
+        <p className="subtext">
+          Select other people on this account. The Owner above is already included and does not need
+          to be listed again.
+        </p>
+        <div className="account-joint-user-list">
+          {jointUserChoices.map((option) => (
+            <label key={option.value} className="checkbox-field">
+              <span className="checkbox-row">
+                <input
+                  type="checkbox"
+                  checked={jointUserIds.includes(option.value)}
+                  onChange={(event) => toggleJointUser(option.value, event.target.checked)}
+                />
+                <span>{option.label}</span>
+              </span>
+            </label>
+          ))}
+          {jointUserChoices.length === 0 && (
+            <p className="subtext">
+              Add another user in Administration before assigning joint owners.
+            </p>
+          )}
+        </div>
+      </fieldset>
+    ) : null;
+
+  const accountFormFields = (
+    <>
+      {isAccountEdit && (
+        <AccountImageUpload
+          accountId={recordId}
+          hasImage={Boolean(formData.image_path)}
+          onChanged={(hasImage) =>
+            setFormData((prev) => ({ ...prev, image_path: hasImage ? "1" : "" }))
+          }
+        />
       )}
-      {status && <p className="status">{status}</p>}
-      {error && <p className="error">{error}</p>}
-    </section>
+      <TableFormFields
+        columns={accountOwnershipColumns.beforeJoint}
+        foreignKeys={foreignKeys}
+        fkOptions={fkOptions}
+        formData={formData}
+        columnLabels={accountColumnLabels}
+        inputTypes={fieldInputTypes}
+        fieldHints={fieldHints}
+        inputProps={moneyInputProps}
+        onChange={handleChange}
+        canRevealSecrets={isAdmin}
+      />
+      {jointUsersField}
+      {accountOwnershipColumns.afterJoint.length > 0 && (
+        <TableFormFields
+          columns={accountOwnershipColumns.afterJoint}
+          foreignKeys={foreignKeys}
+          fkOptions={fkOptions}
+          formData={formData}
+          columnLabels={accountColumnLabels}
+          inputTypes={fieldInputTypes}
+          fieldHints={fieldHints}
+          inputProps={moneyInputProps}
+          onChange={handleChange}
+          canRevealSecrets={isAdmin}
+        />
+      )}
+      {readOnlyColumns.length > 0 && (
+        <TableFormFields
+          columns={readOnlyColumns}
+          foreignKeys={foreignKeys}
+          fkOptions={fkOptions}
+          formData={formData}
+          columnLabels={columnLabels}
+          displayValues={readOnlyDisplayValues}
+          readOnly
+        />
+      )}
+    </>
+  );
+
+  const formActionProps = {
+    saving,
+    submitLabel: isEdit ? "Update record" : "Create record",
+    onCancel: () => goBack(),
+    onDelete: isEdit ? () => setShowDeleteConfirm(true) : undefined,
+    deleteLabel: "Delete record",
+  };
+
+  return (
+    <>
+      <PageHeader
+        breadcrumbs={[
+          { label: "Home", to: "/" },
+          { label: appName, to: `/app/${appName}` },
+          { label: tableLabel, to: `/app/${appName}/${table}` },
+          { label: isEdit ? "Edit" : "New" },
+        ]}
+        title={
+          isAccountEdit
+            ? formData.name || `Edit ${tableLabel}`
+            : isEdit
+              ? `Edit ${tableLabel}`
+              : `New ${tableLabel} record`
+        }
+        subtitle={
+          isAccountEdit
+            ? "Edit details below, then review balance trend and spending."
+            : isEdit
+              ? "Update the fields below and save your changes."
+              : "Fill in the fields below to create a record."
+        }
+        actions={
+          isAccountEdit ? (
+            <Link
+              className="button-primary"
+              to={`/app/${appName}/accounts/${encodeURIComponent(String(recordId))}/register`}
+            >
+              Open register
+            </Link>
+          ) : null
+        }
+      />
+
+      {isAccountEdit && !loading && (
+        <section className="panel account-edit-overview">
+          <div className="account-edit-summary">
+            <div>
+              <span className="register-summary-label">Type</span>
+              <strong>{accountTypeName || "—"}</strong>
+            </div>
+            {!accountIsSite && (
+              <div>
+                <span className="register-summary-label">
+                  {accountIsLiability ? "Amount owed" : "Balance"}
+                </span>
+                <strong className={getSignedAmountClass(formData.balance)}>
+                  {formatCurrency(formData.balance)}
+                </strong>
+              </div>
+            )}
+            {accountIsLiability && formData.credit_limit !== "" && formData.credit_limit != null && (
+              <div>
+                <span className="register-summary-label">Credit limit</span>
+                <strong>{formatCurrency(formData.credit_limit)}</strong>
+              </div>
+            )}
+          </div>
+
+          <details className="account-edit-accordion">
+            <summary>Account details</summary>
+            <form className="form account-edit-accordion-form form-shell" onSubmit={handleSubmit}>
+              <FormActions {...formActionProps}>{accountFormFields}</FormActions>
+            </form>
+          </details>
+
+          <div className="account-edit-charts">
+            <AccountBalanceTrendChart
+              accountId={recordId}
+              accountTypeName={accountTypeName}
+              openingBalance={formData.opening_balance}
+            />
+            {shouldShowSpendingByCategoryChart(accountTypeName) && (
+              <SpendingByCategoryPieChart
+                accountId={recordId}
+                accountTypeName={accountTypeName}
+                title="Spending by category"
+              />
+            )}
+          </div>
+        </section>
+      )}
+
+      {(loading || !isAccountEdit || status || error) && (
+        <section className="panel">
+          {loading && <p className="subtext">Loading form...</p>}
+          {!loading && !isAccountEdit && (
+            <form className="form form-shell" onSubmit={handleSubmit}>
+              <FormActions {...formActionProps}>{accountFormFields}</FormActions>
+            </form>
+          )}
+          {status && <p className="status">{status}</p>}
+          {error && <p className="error">{error}</p>}
+        </section>
+      )}
+
+      {showAccountTransactions && (
+        <AccountTransactionsPanel accountId={recordId} appName={appName} />
+      )}
+
+      {showDeleteConfirm && (
+        <ConfirmModal
+          title={`Delete ${tableLabel.toLowerCase()}?`}
+          message={`This will remove "${recordSummary}" from ${tableLabel}. You can restore it from Administration > Deleted Records.`}
+          confirmLabel="Delete record"
+          onCancel={() => setShowDeleteConfirm(false)}
+          onConfirm={handleDelete}
+        />
+      )}
+    </>
   );
 }
 

@@ -1,0 +1,112 @@
+export const NAV_ICON_OPTIONS = [
+  { value: "", label: "Default" },
+  { value: "home", label: "Home" },
+  { value: "app", label: "Application" },
+  { value: "tables", label: "Table" },
+  { value: "applications", label: "Applications" },
+  { value: "fields", label: "Fields" },
+  { value: "users", label: "Users" },
+  { value: "ide", label: "IDE" },
+  { value: "deletes", label: "Deleted records" },
+  { value: "logs", label: "Error logs" },
+  { value: "navigation", label: "Navigation" },
+  { value: "reports", label: "Reports" },
+  { value: "tasks", label: "Tasks" },
+  { value: "board", label: "Board" },
+  { value: "focus", label: "Focus" },
+  { value: "notes", label: "Notes" },
+];
+
+export const navIcons = {
+  home: <path d="M3 10.5 12 3l9 7.5M5 9v11h14V9" />,
+  app: (
+    <>
+      <rect x="3" y="3" width="7" height="7" rx="1.5" />
+      <rect x="14" y="3" width="7" height="7" rx="1.5" />
+      <rect x="3" y="14" width="7" height="7" rx="1.5" />
+      <rect x="14" y="14" width="7" height="7" rx="1.5" />
+    </>
+  ),
+  applications: (
+    <>
+      <rect x="3" y="3" width="18" height="18" rx="2" />
+      <path d="M3 9h18M9 21V9" />
+    </>
+  ),
+  tables: (
+    <>
+      <rect x="3" y="3" width="18" height="18" rx="2" />
+      <path d="M3 9h18M3 15h18M12 3v18" />
+    </>
+  ),
+  fields: <path d="M4 7h16M4 12h16M4 17h10" />,
+  users: (
+    <>
+      <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+      <circle cx="9" cy="7" r="4" />
+      <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
+    </>
+  ),
+  ide: <path d="m8 9-3 3 3 3m8-6 3 3-3 3M13 6l-2 12" />,
+  deletes: (
+    <>
+      <path d="M3 6h18" />
+      <path d="M8 6V4h8v2" />
+      <path d="M10 11v6" />
+      <path d="M14 11v6" />
+      <path d="M5 6l1 14h12l1-14" />
+    </>
+  ),
+  logs: (
+    <>
+      <path d="M4 4h16v16H4z" />
+      <path d="M8 8h8" />
+      <path d="M8 12h8" />
+      <path d="M8 16h5" />
+    </>
+  ),
+  navigation: (
+    <>
+      <path d="M4 6h16" />
+      <path d="M4 12h10" />
+      <path d="M4 18h16" />
+    </>
+  ),
+  reports: (
+    <>
+      <path d="M4 4h16v16H4z" />
+      <path d="M8 8h8" />
+      <path d="M8 12h8" />
+      <path d="M8 16h5" />
+    </>
+  ),
+  tasks: (
+    <>
+      <path d="M9 11l3 3L22 4" />
+      <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
+    </>
+  ),
+  board: (
+    <>
+      <rect x="3" y="4" width="5" height="16" rx="1" />
+      <rect x="10" y="4" width="5" height="10" rx="1" />
+      <rect x="17" y="4" width="5" height="14" rx="1" />
+    </>
+  ),
+  focus: (
+    <>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 7v5l3 3" />
+    </>
+  ),
+  notes: (
+    <>
+      <path d="M14 2H6a2 2 0 0 0-2 2v16l4-2 4 2 4-2 4 2V4a2 2 0 0 0-2-2z" />
+      <path d="M8 7h8M8 11h8M8 15h5" />
+    </>
+  ),
+};
+
+export function getNavIcon(iconKey, fallback = "app") {
+  return navIcons[iconKey] ?? navIcons[fallback] ?? navIcons.app;
+}

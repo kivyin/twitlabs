@@ -1,46 +1,45 @@
-function AdminDictionaryTable({ entries, onEdit, onDeleteRequest }) {
+import DataTable from "../DataTable";
+
+function AdminDictionaryTable({ entries, onEdit }) {
+  const rows = entries.map((entry) => ({
+    ...entry,
+    application_display: entry.application_name ?? entry.application ?? "",
+    table_display: entry.table ?? "",
+  }));
+
   return (
-    <div className="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>id</th>
-            <th>application</th>
-            <th>table</th>
-            <th>name</th>
-            <th>label</th>
-            <th>type</th>
-            <th>sort_order</th>
-            <th>action</th>
-          </tr>
-        </thead>
-        <tbody>
-          {entries.map((entry) => (
-            <tr key={entry.id}>
-              <td>{entry.id}</td>
-              <td>{entry.application_name ?? entry.application ?? ""}</td>
-              <td>{entry.table ?? ""}</td>
-              <td>{entry.name}</td>
-              <td>{entry.label}</td>
-              <td>{entry.type}</td>
-              <td>{entry.sort_order ?? 0}</td>
-              <td>
-                <button type="button" onClick={() => onEdit(entry)}>
-                  Edit
-                </button>
-                <button
-                  type="button"
-                  className="danger-button"
-                  onClick={() => onDeleteRequest(entry)}
-                >
-                  Delete
-                </button>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+    <DataTable
+      storageKey="data-table:admin:dictionary"
+      columns={[
+        "id",
+        "application_display",
+        "table_display",
+        "name",
+        "label",
+        "type",
+        "ref_table",
+        "ref_label_field",
+        "sort_order",
+      ]}
+      defaultVisibleColumns={[
+        "id",
+        "application_display",
+        "table_display",
+        "name",
+        "label",
+        "type",
+        "ref_table",
+        "ref_label_field",
+        "sort_order",
+      ]}
+      columnLabels={{
+        application_display: "application",
+        table_display: "table",
+        ref_label_field: "ref label",
+      }}
+      rows={rows}
+      onRowClick={(entry) => onEdit(entry)}
+    />
   );
 }
 

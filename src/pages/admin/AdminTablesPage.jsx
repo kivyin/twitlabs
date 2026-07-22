@@ -17,6 +17,7 @@ const EMPTY_FORM = {
   type: "collection",
   data_type: "",
   ref_table: "",
+  ref_label_field: "",
   required: 0,
   sort_order: 0,
 };
@@ -204,14 +205,16 @@ function AdminTablesPage() {
 
   return (
     <div>
-      <div className="row" style={{ marginBottom: "0.75rem" }}>
-        <h2 style={{ margin: 0 }}>Tables</h2>
-        <button type="button" onClick={resetForm}>
-          New Table
-        </button>
-        <button type="button" onClick={handleReseed}>
-          Reseed from DB Schema
-        </button>
+      <div className="toolbar">
+        <h2>Tables</h2>
+        <div className="toolbar-actions">
+          <button type="button" onClick={resetForm}>
+            New Table
+          </button>
+          <button type="button" onClick={handleReseed}>
+            Reseed from DB Schema
+          </button>
+        </div>
       </div>
 
       <h3>{form.id ? "Edit Table" : "New Table"}</h3>
@@ -226,9 +229,19 @@ function AdminTablesPage() {
         onSubmit={handleSave}
       />
       {form.id && (
-        <button type="button" style={{ marginTop: "0.5rem" }} onClick={resetForm}>
-          Cancel
-        </button>
+        <>
+          <button type="button" style={{ marginTop: "0.5rem" }} onClick={resetForm}>
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="danger-button"
+            style={{ marginTop: "0.5rem", marginLeft: "0.5rem" }}
+            onClick={() => setDeleteTarget(form)}
+          >
+            Delete
+          </button>
+        </>
       )}
 
       {status && <p className="status">{status}</p>}
@@ -238,11 +251,7 @@ function AdminTablesPage() {
       {loading ? (
         <p>Loading...</p>
       ) : (
-        <AdminDictionaryTable
-          entries={collections}
-          onEdit={startEdit}
-          onDeleteRequest={setDeleteTarget}
-        />
+        <AdminDictionaryTable entries={collections} onEdit={startEdit} />
       )}
 
       <DictionaryHealthPanel

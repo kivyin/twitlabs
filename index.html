@@ -4,7 +4,34 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>my-first-react-app</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Antonio:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <meta name="theme-color" content="#2563eb" />
+    <meta name="description" content="TwitApps — one workspace for all your applications." />
+    <title>TwitApps</title>
+    <script>
+      try {
+        var storedTheme = localStorage.getItem("twitlabs-theme") || "system";
+        var prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+        var resolvedTheme =
+          storedTheme === "lcars"
+            ? "lcars"
+            : storedTheme === "dark"
+              ? "dark"
+              : storedTheme === "light"
+                ? "light"
+                : prefersDark
+                  ? "dark"
+                  : "light";
+        document.documentElement.dataset.theme = resolvedTheme;
+        document.documentElement.dataset.themePreference = storedTheme;
+        document.documentElement.style.colorScheme = resolvedTheme === "light" ? "light" : "dark";
+      } catch (error) {}
+    </script>
   </head>
   <body>
     <div id="root"></div>

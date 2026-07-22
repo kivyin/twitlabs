@@ -1,0 +1,86 @@
+import { apiRequest } from "./http";
+
+export function getNotesSummary() {
+  return apiRequest("/api/notes/summary");
+}
+
+export function getNotesTree() {
+  return apiRequest("/api/notes/tree");
+}
+
+export function getNotes(filters = {}) {
+  const params = new URLSearchParams();
+  Object.entries(filters).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== "") {
+      params.set(key, String(value));
+    }
+  });
+  const query = params.toString();
+  return apiRequest(`/api/notes/list${query ? `?${query}` : ""}`);
+}
+
+export function getNote(noteId) {
+  return apiRequest(`/api/notes/${noteId}`);
+}
+
+export function createNote(data) {
+  return apiRequest("/api/notes", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export function updateNote(noteId, data) {
+  return apiRequest(`/api/notes/${noteId}`, {
+    method: "PUT",
+    body: JSON.stringify(data),
+  });
+}
+
+export function deleteNote(noteId) {
+  return apiRequest(`/api/notes/${noteId}`, {
+    method: "DELETE",
+  });
+}
+
+export function createNotebook(data) {
+  return apiRequest("/api/notes/notebooks", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export function updateNotebook(notebookId, data) {
+  return apiRequest(`/api/notes/notebooks/${notebookId}`, {
+    method: "PUT",
+    body: JSON.stringify(data),
+  });
+}
+
+export function createSubject(data) {
+  return apiRequest("/api/notes/subjects", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export function updateSubject(subjectId, data) {
+  return apiRequest(`/api/notes/subjects/${subjectId}`, {
+    method: "PUT",
+    body: JSON.stringify(data),
+  });
+}
+
+export function createTopic(data) {
+  return apiRequest("/api/notes/topics", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export function updateTopic(topicId, data) {
+  return apiRequest(`/api/notes/topics/${topicId}`, {
+    method: "PUT",
+    body: JSON.stringify(data),
+  });
+}

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { deleteRows, insertRow, updateRows } from "../../api/dbApi";
 import { getApplications } from "../../api/dictionaryApi";
 import ConfirmModal from "../../components/common/ConfirmModal";
+import DataTable from "../../components/DataTable";
 
 const EMPTY_FORM = { id: null, name: "", title: "", description: "" };
 
@@ -106,8 +107,8 @@ function AdminApplicationsPage() {
 
   return (
     <div>
-      <div className="row" style={{ marginBottom: "0.75rem" }}>
-        <h2 style={{ margin: 0 }}>Applications</h2>
+      <div className="toolbar">
+        <h2>Applications</h2>
         <button type="button" onClick={resetForm}>
           New Application
         </button>
@@ -157,6 +158,24 @@ function AdminApplicationsPage() {
               Cancel
             </button>
           )}
+          {form.id && (
+            <button
+              type="button"
+              className="danger-button"
+              style={{ marginLeft: "0.5rem" }}
+              onClick={() =>
+                setDeleteTarget(
+                  applications.find((a) => a.id === form.id) ?? {
+                    id: form.id,
+                    name: form.name,
+                    title: form.title,
+                  }
+                )
+              }
+            >
+              Delete
+            </button>
+          )}
         </div>
       </form>
 
@@ -167,41 +186,12 @@ function AdminApplicationsPage() {
       {loading ? (
         <p>Loading...</p>
       ) : (
-        <div className="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>id</th>
-                <th>name</th>
-                <th>title</th>
-                <th>description</th>
-                <th>action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {applications.map((app) => (
-                <tr key={app.id}>
-                  <td>{app.id}</td>
-                  <td>{app.name}</td>
-                  <td>{app.title}</td>
-                  <td>{app.description ?? ""}</td>
-                  <td>
-                    <button type="button" onClick={() => startEdit(app)}>
-                      Edit
-                    </button>
-                    <button
-                      type="button"
-                      className="danger-button"
-                      onClick={() => setDeleteTarget(app)}
-                    >
-                      Delete
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <DataTable
+          storageKey="data-table:admin:applications"
+          columns={["id", "name", "title", "description"]}
+          rows={applications}
+          onRowClick={(app) => startEdit(app)}
+        />
       )}
 
       {deleteTarget && (
