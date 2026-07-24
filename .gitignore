@@ -26,5 +26,6 @@ dist-ssr
 *.sln
 *.sw?
 .vercel
-data/attachments/
+data/mydb.db
 data/logs/
+
