@@ -82,6 +82,31 @@ function DataTable({
 
   const displayCount = serverSide ? totalCount ?? rows.length : sortedRows.length;
   const rowsAreClickable = Boolean(getRowLink || onRowClick);
+  const headerColSpan = visibleColumns.length + (reorderable ? 1 : 0);
+
+  const toolbar = (
+    <>
+      <div className="data-table-meta">
+        {displayCount} row{displayCount === 1 ? "" : "s"}
+        {reorderable ? <span> · drag handle to reorder</span> : null}
+        {!reorderable && sort?.column && (
+          <span>
+            {" "}
+            · sorted by {columnLabels[sort.column] ?? sort.column} ({sort.direction})
+          </span>
+        )}
+      </div>
+      <div className="data-table-toolbar-actions">
+        <button
+          type="button"
+          className="data-table-columns-button"
+          onClick={() => setColumnsOpen(true)}
+        >
+          Columns
+        </button>
+      </div>
+    </>
+  );
 
   const handleRowActivate = (row, index) => {
     if (onRowClick) {
@@ -116,27 +141,7 @@ function DataTable({
 
   return (
     <div className={`data-table${refreshing ? " data-table-refreshing" : ""}`}>
-      <div className="data-table-toolbar">
-        <div className="data-table-meta">
-          {displayCount} row{displayCount === 1 ? "" : "s"}
-          {reorderable ? <span> · drag handle to reorder</span> : null}
-          {!reorderable && sort?.column && (
-            <span>
-              {" "}
-              · sorted by {columnLabels[sort.column] ?? sort.column} ({sort.direction})
-            </span>
-          )}
-        </div>
-        <div className="data-table-toolbar-actions">
-          <button
-            type="button"
-            className="data-table-columns-button"
-            onClick={() => setColumnsOpen(true)}
-          >
-            Columns
-          </button>
-        </div>
-      </div>
+      <div className="data-table-toolbar data-table-toolbar-mobile">{toolbar}</div>
 
       <ColumnPickerModal
         open={columnsOpen}
@@ -151,7 +156,12 @@ function DataTable({
       <div className={`table-wrap${paginated ? " table-wrap-natural" : ""}`}>
         <table className="data-table-stackable">
           <thead>
-            <tr>
+            <tr className="data-table-toolbar-row">
+              <th colSpan={Math.max(headerColSpan, 1)}>
+                <div className="data-table-toolbar data-table-toolbar-embedded">{toolbar}</div>
+              </th>
+            </tr>
+            <tr className="data-table-columns-row">
               {reorderable ? (
                 <th className="data-table-reorder-col" aria-label="Reorder">
                   <span className="visually-hidden">Reorder</span>

@@ -19,10 +19,13 @@ import { useBrowseReturn } from "../hooks/useBrowseReturn";
 import { buildForeignKeyOptionLabel } from "../utils/tableForm";
 import { buildUserOptions } from "../utils/userReferences";
 import {
+  getDefaultLiabilityEntryMode,
   getMoneyFieldHint,
   getSignedAmountClass,
-  validateCategorySignedAmount,
   isLiabilityAccountType,
+  isLoanAccountType,
+  resolveLiabilityTransactionAmount,
+  validateCategorySignedAmount,
 } from "../utils/money";
 function createEmptySplitLine() {
   return { category_id: "", amount: "" };
@@ -88,6 +91,7 @@ function TransactionFormPage() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [redirectToTransferId, setRedirectToTransferId] = useState(null);
   const [receiptPrefillNotice, setReceiptPrefillNotice] = useState("");
+  const [liabilityEntryMode, setLiabilityEntryMode] = useState("payment");
 
   useEffect(() => {
     let active = true;
@@ -129,11 +133,16 @@ function TransactionFormPage() {
         setAccountOptions(
           accounts.map((row) => ({
             value: String(row.id),
-            label: buildForeignKeyOptionLabel(row, "id", "accounts"),
+            label: row.account_type_name
+              ? `${buildForeignKeyOptionLabel(row, "id", "accounts")} (${row.account_type_name})`
+              : buildForeignKeyOptionLabel(row, "id", "accounts"),
           }))
         );
         setAccountTypeById(
           Object.fromEntries(accounts.map((row) => [String(row.id), row.account_type_name]))
+        );
+        const accountTypes = Object.fromEntries(
+          accounts.map((row) => [String(row.id), row.account_type_name])
         );
         setCategoryOptions(
           categories.map((row) => ({
@@ -184,10 +193,17 @@ function TransactionFormPage() {
             account_id: transaction.account_id ? String(transaction.account_id) : "",
             payee_id: transaction.payee_id ? String(transaction.payee_id) : "",
             category_id: transaction.category_id ? String(transaction.category_id) : "",
-            amount: transaction.amount === null ? "" : String(transaction.amount),
+            amount:
+              transaction.amount === null || transaction.amount === undefined
+                ? ""
+                : String(Math.abs(Number(transaction.amount))),
             description: transaction.description ?? "",
             transaction_date: transaction.transaction_date ?? "",
           });
+          const accountTypeName = accountTypes[String(transaction.account_id)] ?? "";
+          if (isLiabilityAccountType(accountTypeName)) {
+            setLiabilityEntryMode(Number(transaction.amount) < 0 ? "payment" : "charge");
+          }
           setReceiptPrefillNotice("");
 
           if (transaction.splits?.length > 0) {
@@ -226,6 +242,13 @@ function TransactionFormPage() {
                 ? "Prefilled from receipt — review and save. The receipt photo will attach automatically."
                 : "Prefilled from receipt — choose an account and save. The receipt photo will attach automatically."
             );
+          } else {
+            setReceiptPrefillNotice("");
+          }
+
+          const initialAccountId = draft ? prefillAccountId || "" : prefillAccountId;
+          if (initialAccountId && isLiabilityAccountType(accountTypes[initialAccountId] ?? "")) {
+            setLiabilityEntryMode(getDefaultLiabilityEntryMode(accountTypes[initialAccountId]));
           }
           if (!receiptImageAppliedRef.current && receiptImage?.imageBase64) {
             receiptImageAppliedRef.current = true;
@@ -248,12 +271,26 @@ function TransactionFormPage() {
   const selectedCategoryType = categoryTypeById[formData.category_id] ?? "";
   const selectedAccountType = accountTypeById[formData.account_id] ?? "";
   const selectedAccountIsLiability = isLiabilityAccountType(selectedAccountType);
-  const amountHint = getMoneyFieldHint("transactions", "amount", {
-    isTransfer: false,
-    categoryType: selectedCategoryType,
-    accountTypeName: selectedAccountType,
-  });
-  const amountClassName = getSignedAmountClass(formData.amount);
+  const selectedAccountIsLoan = isLoanAccountType(selectedAccountType);
+  const amountHint = selectedAccountIsLiability
+    ? liabilityEntryMode === "payment"
+      ? "Enter the payment as a positive amount. This reduces amount owed."
+      : selectedAccountIsLoan
+        ? "Enter a fee or added charge as a positive amount. This increases amount owed."
+        : "Enter the charge as a positive amount. This increases amount owed."
+    : getMoneyFieldHint("transactions", "amount", {
+        isTransfer: false,
+        categoryType: selectedCategoryType,
+        accountTypeName: selectedAccountType,
+      });
+  const previewNumeric = Number(formData.amount);
+  const signedPreviewAmount =
+    selectedAccountIsLiability && formData.amount !== "" && Number.isFinite(previewNumeric)
+      ? (liabilityEntryMode === "payment" ? -1 : 1) * Math.abs(previewNumeric)
+      : previewNumeric;
+  const amountClassName = getSignedAmountClass(
+    selectedAccountIsLiability ? signedPreviewAmount : formData.amount
+  );
   const transferPath = `/app/${appName}/transfers/new`;
   const transferState = formData.account_id
     ? { fromAccountId: String(formData.account_id), accountId: String(formData.account_id) }
@@ -273,6 +310,12 @@ function TransactionFormPage() {
   const handleChange = (name, value) => {
     setFormData((prev) => {
       const next = { ...prev, [name]: value };
+      if (name === "account_id") {
+        const nextType = accountTypeById[value] ?? "";
+        if (isLiabilityAccountType(nextType)) {
+          setLiabilityEntryMode(getDefaultLiabilityEntryMode(nextType));
+        }
+      }
       if (name === "payee_id" && value) {
         if (payeeDefaultCategoryById[value] && !prev.category_id) {
           next.category_id = payeeDefaultCategoryById[value];
@@ -319,11 +362,13 @@ function TransactionFormPage() {
   };
 
   const buildPayload = () => {
-    const amount = validateCategorySignedAmount(
-      formData.amount,
-      selectedCategoryType,
-      selectedAccountType
-    );
+    const amount = selectedAccountIsLiability
+      ? resolveLiabilityTransactionAmount(formData.amount, liabilityEntryMode)
+      : validateCategorySignedAmount(
+          formData.amount,
+          selectedCategoryType,
+          selectedAccountType
+        );
 
     const payload = {
       user_id: formData.user_id,
@@ -340,9 +385,10 @@ function TransactionFormPage() {
         throw new Error("Choose at least one split category.");
       }
       payload.category_id = splitLines[0].category_id;
+      const sign = amount < 0 ? -1 : 1;
       payload.splits = splitLines.map((line) => ({
         category_id: line.category_id,
-        amount: Number(line.amount),
+        amount: Math.abs(Number(line.amount)) * sign,
       }));
     }
 
@@ -447,7 +493,9 @@ function TransactionFormPage() {
           useSplits
             ? "Split one purchase across multiple categories."
             : selectedAccountIsLiability
-              ? "Charges are positive (increases amount owed). Payments are negative (reduces amount owed)."
+              ? selectedAccountIsLoan
+                ? "Choose Payment to pay down the loan, or Fee / charge for interest and fees. Enter positive amounts."
+                : "Choose Payment or Charge, then enter a positive amount."
               : "Use positive amounts for deposits and negative amounts for withdrawals."
         }
       />
@@ -498,7 +546,9 @@ function TransactionFormPage() {
                       </select>
                       <span className="field-hint">
                         {selectedAccountIsLiability
-                          ? "Credit cards and loans track amount owed. Positive charges increase the balance; negative payments reduce it."
+                          ? selectedAccountIsLoan
+                            ? "Loans track amount owed. Use Payment to pay it down."
+                            : "Credit cards track amount owed. Use Payment or Charge below."
                           : "The account this transaction applies to."}
                       </span>
                     </label>
@@ -513,6 +563,40 @@ function TransactionFormPage() {
                       />
                     </label>
                   </div>
+
+                  {selectedAccountIsLiability ? (
+                    <fieldset className="liability-entry-fieldset">
+                      <legend>What kind of entry is this?</legend>
+                      <div className="liability-entry-mode" role="group" aria-label="Entry type">
+                        <button
+                          type="button"
+                          className={`liability-entry-mode-button${
+                            liabilityEntryMode === "payment" ? " active" : ""
+                          }`}
+                          onClick={() => setLiabilityEntryMode("payment")}
+                        >
+                          Payment
+                          <span>Reduces amount owed</span>
+                        </button>
+                        <button
+                          type="button"
+                          className={`liability-entry-mode-button${
+                            liabilityEntryMode === "charge" ? " active" : ""
+                          }`}
+                          onClick={() => setLiabilityEntryMode("charge")}
+                        >
+                          {selectedAccountIsLoan ? "Fee / charge" : "Charge"}
+                          <span>Increases amount owed</span>
+                        </button>
+                      </div>
+                    </fieldset>
+                  ) : formData.account_id ? (
+                    <p className="field-hint liability-entry-hint">
+                      Select a loan or credit card account above to choose Payment vs Charge.
+                      To pay a loan from checking/savings, use{" "}
+                      <BrowseLink to={`/app/${appName}/transfers/new`}>Transfer</BrowseLink> instead.
+                    </p>
+                  ) : null}
 
                   <div className="checkbook-pay-row">
                     <label>
@@ -535,6 +619,7 @@ function TransactionFormPage() {
                       <input
                         type="number"
                         step="0.01"
+                        min={selectedAccountIsLiability ? "0.01" : undefined}
                         value={formData.amount}
                         onChange={(event) => handleChange("amount", event.target.value)}
                         className={amountClassName || undefined}
@@ -543,6 +628,15 @@ function TransactionFormPage() {
                     </label>
                   </div>
                   {amountHint && <span className="field-hint">{amountHint}</span>}
+                  {selectedAccountIsLiability && formData.amount !== "" && Number.isFinite(signedPreviewAmount) ? (
+                    <span className="field-hint">
+                      Will post as{" "}
+                      <strong className={amountClassName || undefined}>
+                        {signedPreviewAmount.toFixed(2)}
+                      </strong>{" "}
+                      ({liabilityEntryMode === "payment" ? "reduces" : "increases"} amount owed).
+                    </span>
+                  ) : null}
 
                   <label className="checkbook-memo">
                     Memo / description
@@ -597,11 +691,12 @@ function TransactionFormPage() {
                     {!isEdit && (
                       <div className="transfer-instead-callout">
                         <p className="subtext">
-                          Moving money between accounts? Use the transfer form for From → To
-                          payments and advances.
+                          {selectedAccountIsLiability
+                            ? "Paying from a bank account? Use a transfer so cash and amount owed both update."
+                            : "Moving money between accounts? Use the transfer form for From → To payments and advances."}
                         </p>
                         <BrowseLink className="button" to={transferPath} state={transferState}>
-                          Make a transfer instead
+                          {selectedAccountIsLiability ? "Pay with a transfer" : "Make a transfer instead"}
                         </BrowseLink>
                       </div>
                     )}

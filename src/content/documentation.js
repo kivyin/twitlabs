@@ -306,7 +306,8 @@ const DOC_APPS = {
           section("When to use", "Create an account for each place you hold money or track a balance. Transactions post against an account."),
           section("Account types control the form", [
             "Bank checking / savings — opening balance and cash balance fields.",
-            "Credit card / loan — credit limit, APR, minimum payment; balance is amount owed.",
+            "Credit card — starting amount owed, credit limit, APR, and minimum payment. Balance is amount owed.",
+            "Loan — starting amount owed (principal when you begin tracking), APR, and minimum payment. On transactions choose Payment and enter a positive amount to pay it down (or use a bank→loan transfer).",
             "Site account — login URL, username, and password; no money fields.",
           ]),
           section("Owner and joint accounts", [
@@ -331,9 +332,9 @@ const DOC_APPS = {
           field("account_type_id", "Account type", "Bank checking/savings, credit card, loan, or site account. Controls which money and login fields appear."),
           field("owner_user_id", "Owner", "Person whose name is on the account. Separate from who added the account in the app."),
           field("is_joint", "Joint account", "Yes if additional people share the account. When Yes, select joint users on the form."),
-          field("opening_balance", "Opening balance", "Shown for bank-style accounts. Starting cash before posted transactions."),
+          field("opening_balance", "Opening / starting owed", "Banks: starting cash. Credit cards and loans: starting amount owed before app transactions. For loans, enter the principal you still owe — payments then reduce it."),
           field("balance", "Balance", "Current balance maintained by transactions. Not edited directly on the form — use Sync on the register if stored balance diverges from the ledger."),
-          field("credit_limit", "Credit limit", "Credit cards and loans. Available credit is limit minus amount owed."),
+          field("credit_limit", "Credit limit", "Credit cards only. Available credit is limit minus amount owed. Loans use Starting amount owed instead."),
           field("apr", "APR (%)", "Annual percentage rate for debt planner reports."),
           field("minimum_payment", "Minimum payment", "Typical minimum payment for debt planning."),
           field("account_number", "Account number", "Optional reference number for your records."),

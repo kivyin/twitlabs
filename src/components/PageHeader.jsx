@@ -1,27 +1,66 @@
-import { Fragment } from "react";
-import { Link, useLocation, useParams } from "react-router-dom";
+import { Fragment, useMemo } from "react";
+import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import FavoriteButton from "./FavoriteButton";
 import HelpButton from "./docs/HelpButton";
+import UserMenuButton from "./UserMenuButton";
 import { LcarsMidBand } from "./LcarsShellChrome";
+import { useAuth } from "../context/AuthContext";
 import { useBrowseStack } from "../context/BrowseStackContext";
 import { useTheme } from "../context/ThemeContext";
 import { usePageHelpFromPath } from "../utils/docHelp";
 
-function PageHeader({ breadcrumbs = [], title, subtitle, actions, help, favorite = true, showBack = true }) {
+function resolveBackFallback(breadcrumbs) {
+  if (!Array.isArray(breadcrumbs) || breadcrumbs.length === 0) {
+    return "/";
+  }
+  for (let index = breadcrumbs.length - 2; index >= 0; index -= 1) {
+    if (breadcrumbs[index]?.to) {
+      return breadcrumbs[index].to;
+    }
+  }
+  return breadcrumbs.find((crumb) => crumb?.to)?.to || "/";
+}
+
+function PageHeader({
+  breadcrumbs = [],
+  title,
+  subtitle,
+  actions,
+  meta = null,
+  help,
+  favorite = true,
+  showBack = true,
+}) {
   const location = useLocation();
   const params = useParams();
+  const navigate = useNavigate();
+  const { logout, user } = useAuth();
   const autoHelp = usePageHelpFromPath(location.pathname, params);
   const resolvedHelp = help === false ? null : help ?? autoHelp;
-  const { canGoBack, goBack } = useBrowseStack();
+  const { goBack } = useBrowseStack();
   const { resolvedTheme } = useTheme();
   const isLcars = resolvedTheme === "lcars";
+  const backFallback = useMemo(() => resolveBackFallback(breadcrumbs), [breadcrumbs]);
+  const displayName = user?.display_name || user?.username || "";
 
-  const actionRow = (
+  const handleSignOut = async () => {
+    await logout();
+    navigate("/login", { replace: true });
+  };
+
+  const commandActions = (
     <>
       {favorite !== false && (
         <FavoriteButton label={typeof title === "string" ? title : undefined} />
       )}
       {resolvedHelp && <HelpButton help={resolvedHelp} />}
+      {!isLcars ? (
+        <UserMenuButton
+          className="page-header-user-menu"
+          displayName={displayName}
+          onSignOut={handleSignOut}
+        />
+      ) : null}
       {actions}
     </>
   );
@@ -29,57 +68,68 @@ function PageHeader({ breadcrumbs = [], title, subtitle, actions, help, favorite
   return (
     <>
       <header className={`page-header${isLcars ? " page-header-lcars" : ""}`}>
-        <div className="page-header-nav">
-          {showBack && canGoBack ? (
-            <button type="button" className="browse-back-button" onClick={() => goBack()}>
-              <svg
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2.25"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                aria-hidden="true"
+        <div className="page-header-commands">
+          <div className="page-header-commands-start">
+            {showBack ? (
+              <button
+                type="button"
+                className="browse-back-button"
+                onClick={() => goBack(backFallback)}
               >
-                <path d="M15 18l-6-6 6-6" />
-              </svg>
-              Back
-            </button>
-          ) : null}
-          {breadcrumbs.length > 0 && (
-            <nav className="breadcrumbs" aria-label="Breadcrumb">
-              {breadcrumbs.map((crumb, index) => {
-                const isLast = index === breadcrumbs.length - 1;
-                return (
-                  <Fragment key={`${crumb.label}-${index}`}>
-                    {crumb.to && !isLast ? (
-                      <Link to={crumb.to} className="breadcrumb-link">
-                        {crumb.label}
-                      </Link>
-                    ) : (
-                      <span className="breadcrumb-current" aria-current="page">
-                        {crumb.label}
-                      </span>
-                    )}
-                    {!isLast && (
-                      <span className="breadcrumb-sep" aria-hidden="true">
-                        /
-                      </span>
-                    )}
-                  </Fragment>
-                );
-              })}
-            </nav>
-          )}
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.25"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <path d="M15 18l-6-6 6-6" />
+                </svg>
+                Back
+              </button>
+            ) : (
+              <span className="page-header-commands-spacer" aria-hidden="true" />
+            )}
+          </div>
+          <div className="page-header-commands-end page-actions">{commandActions}</div>
         </div>
+
+        {breadcrumbs.length > 0 && (
+          <nav className="breadcrumbs" aria-label="Breadcrumb">
+            {breadcrumbs.map((crumb, index) => {
+              const isLast = index === breadcrumbs.length - 1;
+              return (
+                <Fragment key={`${crumb.label}-${index}`}>
+                  {crumb.to && !isLast ? (
+                    <Link to={crumb.to} className="breadcrumb-link">
+                      {crumb.label}
+                    </Link>
+                  ) : (
+                    <span className="breadcrumb-current" aria-current="page">
+                      {crumb.label}
+                    </span>
+                  )}
+                  {!isLast && (
+                    <span className="breadcrumb-sep" aria-hidden="true">
+                      /
+                    </span>
+                  )}
+                </Fragment>
+              );
+            })}
+          </nav>
+        )}
+
         <div className="page-header-row">
           <div className="page-header-text">
             <h1>{title}</h1>
             {subtitle && <p className="subtext">{subtitle}</p>}
           </div>
-          <div className="page-actions">{actionRow}</div>
+          {meta ? <div className="page-header-meta">{meta}</div> : null}
         </div>
       </header>
       {isLcars ? <LcarsMidBand /> : null}

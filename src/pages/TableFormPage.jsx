@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { getAccountJointUsers, setAccountJointUsers } from "../api/budgetApi";
+import { getAccountJointUsers, setAccountJointUsers, syncAccountBalance } from "../api/budgetApi";
 import { deleteRows, insertRow, runQuery, selectRows, updateRows } from "../api/dbApi";
 import { getCollectionDefinition, getFieldDefinitions } from "../api/dictionaryApi";
 import AccountImageUpload from "../components/AccountImageUpload";
@@ -17,12 +17,14 @@ import {
   getMoneyFieldHint,
   getSignedAmountClass,
   isLiabilityAccountType,
+  isLoanAccountType,
   isMoneyField,
   normalizeBudgetMoneyField,
 } from "../utils/money";
 import {
   filterAccountFormColumns,
   filterVisibleAccountFormColumns,
+  getAccountOpeningBalanceLabel,
   getHiddenAccountFieldDefaults,
   isSiteAccountType,
   shouldShowSpendingByCategoryChart,
@@ -376,6 +378,8 @@ function TableFormPage() {
           savedAccountId,
           Number(data.is_joint) === 1 ? jointUserIds.map(Number) : []
         );
+        // Keep cached balance = opening_balance + transactions (so loan principal shows immediately).
+        await syncAccountBalance(savedAccountId);
       }
 
       setTimeout(() => goBack(), 250);
@@ -427,6 +431,7 @@ function TableFormPage() {
   const isAccountEdit = table === "accounts" && isEdit;
   const showAccountTransactions = isAccountEdit && relatedReady;
   const accountIsLiability = isLiabilityAccountType(accountTypeName);
+  const accountIsLoan = isLoanAccountType(accountTypeName);
   const accountIsSite = isSiteAccountType(accountTypeName);
 
   const accountOwnershipColumns = useMemo(() => {
@@ -449,6 +454,7 @@ function TableFormPage() {
     ...columnLabels,
     owner_user_id: columnLabels.owner_user_id ?? "Owner",
     is_joint: columnLabels.is_joint ?? "Joint account",
+    opening_balance: getAccountOpeningBalanceLabel(accountTypeName),
   };
 
   const jointUserChoices = userOptions.filter(
@@ -568,6 +574,38 @@ function TableFormPage() {
               ? "Update the fields below and save your changes."
               : "Fill in the fields below to create a record."
         }
+        meta={
+          isAccountEdit && !loading ? (
+            <>
+              <div className="page-header-meta-item">
+                <span className="register-summary-label">Account type</span>
+                <strong>{accountTypeName || "—"}</strong>
+              </div>
+              {!accountIsSite && !accountIsLiability && (
+                <div className="page-header-meta-item">
+                  <span className="register-summary-label">Opening balance</span>
+                  <strong>{formatCurrency(formData.opening_balance)}</strong>
+                </div>
+              )}
+              {accountIsLiability && (
+                <div className="page-header-meta-item">
+                  <span className="register-summary-label">Starting amount owed</span>
+                  <strong>{formatCurrency(formData.opening_balance)}</strong>
+                </div>
+              )}
+              {!accountIsSite && (
+                <div className="page-header-meta-item">
+                  <span className="register-summary-label">
+                    {accountIsLiability ? "Amount owed" : "Current balance"}
+                  </span>
+                  <strong className={getSignedAmountClass(formData.balance)}>
+                    {formatCurrency(formData.balance)}
+                  </strong>
+                </div>
+              )}
+            </>
+          ) : null
+        }
         actions={
           isAccountEdit ? (
             <Link
@@ -582,28 +620,17 @@ function TableFormPage() {
 
       {isAccountEdit && !loading && (
         <section className="panel account-edit-overview">
-          <div className="account-edit-summary">
-            <div>
-              <span className="register-summary-label">Type</span>
-              <strong>{accountTypeName || "—"}</strong>
-            </div>
-            {!accountIsSite && (
-              <div>
-                <span className="register-summary-label">
-                  {accountIsLiability ? "Amount owed" : "Balance"}
-                </span>
-                <strong className={getSignedAmountClass(formData.balance)}>
-                  {formatCurrency(formData.balance)}
-                </strong>
+          {!accountIsLoan &&
+            accountIsLiability &&
+            formData.credit_limit !== "" &&
+            formData.credit_limit != null && (
+              <div className="account-edit-summary">
+                <div>
+                  <span className="register-summary-label">Credit limit</span>
+                  <strong>{formatCurrency(formData.credit_limit)}</strong>
+                </div>
               </div>
             )}
-            {accountIsLiability && formData.credit_limit !== "" && formData.credit_limit != null && (
-              <div>
-                <span className="register-summary-label">Credit limit</span>
-                <strong>{formatCurrency(formData.credit_limit)}</strong>
-              </div>
-            )}
-          </div>
 
           <details className="account-edit-accordion">
             <summary>Account details</summary>
@@ -612,20 +639,23 @@ function TableFormPage() {
             </form>
           </details>
 
-          <div className="account-edit-charts">
-            <AccountBalanceTrendChart
-              accountId={recordId}
-              accountTypeName={accountTypeName}
-              openingBalance={formData.opening_balance}
-            />
-            {shouldShowSpendingByCategoryChart(accountTypeName) && (
-              <SpendingByCategoryPieChart
+          <details className="account-edit-accordion">
+            <summary>Charts</summary>
+            <div className="account-edit-charts">
+              <AccountBalanceTrendChart
                 accountId={recordId}
                 accountTypeName={accountTypeName}
-                title="Spending by category"
+                openingBalance={formData.opening_balance}
               />
-            )}
-          </div>
+              {shouldShowSpendingByCategoryChart(accountTypeName) && (
+                <SpendingByCategoryPieChart
+                  accountId={recordId}
+                  accountTypeName={accountTypeName}
+                  title="Spending by category"
+                />
+              )}
+            </div>
+          </details>
         </section>
       )}
 

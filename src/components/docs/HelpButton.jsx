@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { CircleHelp } from "lucide-react";
 import { getHelpDoc } from "../../utils/docHelp";
 import HelpModal from "./HelpModal";
 
@@ -19,7 +20,7 @@ function HelpButton({ help, label = "Help" }) {
         aria-label={`${label} for this page`}
         title={label}
       >
-        ?
+        <CircleHelp size={16} strokeWidth={2} aria-hidden="true" />
       </button>
       <HelpModal
         open={open}

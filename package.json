@@ -1,8 +1,13 @@
 {
   "name": "my-first-react-app",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.6",
   "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/kivyin/twitlabs.git"
+  },
+  "homepage": "https://github.com/kivyin/twitlabs",
   "scripts": {
     "dev": "vite --host 0.0.0.0 --port 5173 --strictPort",
     "build": "vite build",

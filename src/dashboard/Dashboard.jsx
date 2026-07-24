@@ -267,158 +267,162 @@ function Dashboard({ application }) {
 
   return (
     <section className="dashboard-page">
-      <div className="dashboard-toolbar">
-        <div>
-          <h2>Dashboard</h2>
-          <p className="subtext">Overview reports you can customize and extend with SQL.</p>
-        </div>
-        <div className="dashboard-toolbar-actions">
-          <Link to={`/app/${application}/reports`} className="button-primary">
-            Report Center
-          </Link>
-          <button type="button" onClick={() => setPickerOpen(true)}>
-            Add report
-          </button>
-          <button type="button" onClick={() => setBuilderOpen(true)}>
-            Build report
-          </button>
-          <button type="button" className="linkish-button" onClick={resetLayout}>
-            Reset layout
-          </button>
-        </div>
-      </div>
-
-      <div className="dashboard-tabs" role="tablist" aria-label="Dashboards">
-        {dashboards.map((dashboard) => {
-          const isActive = dashboard.id === activeId;
-          return (
-            <div
-              key={dashboard.id}
-              className={`dashboard-tab${isActive ? " active" : ""}`}
-              role="presentation"
-            >
-              {renamingId === dashboard.id ? (
-                <input
-                  className="dashboard-tab-rename"
-                  value={renameValue}
-                  autoFocus
-                  onChange={(event) => setRenameValue(event.target.value)}
-                  onBlur={submitRename}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter") submitRename();
-                    if (event.key === "Escape") setRenamingId(null);
-                  }}
-                />
-              ) : (
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={isActive}
-                  className="dashboard-tab-button"
-                  onClick={() => selectDashboard(dashboard.id)}
-                  onDoubleClick={() => startRename(dashboard)}
-                >
-                  {dashboard.name}
-                  {Number(dashboard.is_default) === 1 && (
-                    <span className="dashboard-tab-default" title="Default dashboard">
-                      ★
-                    </span>
-                  )}
-                </button>
-              )}
-              {isActive && renamingId !== dashboard.id && (
-                <DashboardTabMenu
-                  dashboard={dashboard}
-                  application={application}
-                  onRename={() => startRename(dashboard)}
-                  onSetDefault={() =>
-                    setDefaultDashboard(dashboard.id).catch((err) => setError(err.message))
-                  }
-                  onDelete={() => requestDelete(dashboard)}
-                />
-              )}
-            </div>
-          );
-        })}
-
-        {creating ? (
-          <input
-            className="dashboard-tab-rename"
-            value={createValue}
-            autoFocus
-            placeholder="Dashboard name"
-            onChange={(event) => setCreateValue(event.target.value)}
-            onBlur={submitCreate}
-            onKeyDown={(event) => {
-              if (event.key === "Enter") submitCreate();
-              if (event.key === "Escape") {
-                setCreating(false);
-                setCreateValue("");
-              }
-            }}
-          />
-        ) : (
-          <button
-            type="button"
-            className="dashboard-tab-add"
-            title="New dashboard"
-            onClick={() => setCreating(true)}
-          >
-            + New
-          </button>
-        )}
-      </div>
-
-      {(error || dashboardError) && <p className="error">{error || dashboardError}</p>}
-
-      {loading ? (
-        <div className="panel dashboard-empty">
-          <p className="subtext">Loading dashboards...</p>
-        </div>
-      ) : resolvedWidgets.length === 0 ? (
-        <div className="panel dashboard-empty">
-          <p className="subtext">
-            {activeDashboard ? `"${activeDashboard.name}" is empty.` : "Your dashboard is empty."}
-          </p>
-          <div className="dashboard-empty-actions">
-            <button type="button" className="button-primary" onClick={() => setPickerOpen(true)}>
-              Add a report
+      <div className="dashboard-chrome">
+        <div className="dashboard-toolbar">
+          <div>
+            <h2>Dashboard</h2>
+            <p className="subtext">Overview reports you can customize and extend with SQL.</p>
+          </div>
+          <div className="dashboard-toolbar-actions">
+            <Link to={`/app/${application}/reports`} className="button-primary">
+              Report Center
+            </Link>
+            <button type="button" onClick={() => setPickerOpen(true)}>
+              Add report
             </button>
             <button type="button" onClick={() => setBuilderOpen(true)}>
-              Build custom report
+              Build report
+            </button>
+            <button type="button" className="linkish-button" onClick={resetLayout}>
+              Reset layout
             </button>
           </div>
         </div>
-      ) : (
-        <div className="dashboard-grid">
-          {resolvedWidgets.map((widget, index) => {
-            const ReportComponent = widget.component;
+
+        <div className="dashboard-tabs" role="tablist" aria-label="Dashboards">
+          {dashboards.map((dashboard) => {
+            const isActive = dashboard.id === activeId;
             return (
-              <DashboardWidget
-                key={widget.key}
-                title={widget.title}
-                description={widget.description}
-                span={widget.span}
-                onRemove={() => removeReport(widget.key)}
-                onMoveLeft={index > 0 ? () => moveReport(widget.key, -1) : undefined}
-                onMoveRight={
-                  index < resolvedWidgets.length - 1
-                    ? () => moveReport(widget.key, 1)
-                    : undefined
-                }
-                onToggleSpan={() =>
-                  setReportSpan(widget.key, widget.span >= 3 ? 1 : Number(widget.span || 1) + 1)
-                }
-                onEdit={
-                  widget.customReport ? () => setEditingReport(widget.customReport) : undefined
-                }
+              <div
+                key={dashboard.id}
+                className={`dashboard-tab${isActive ? " active" : ""}`}
+                role="presentation"
               >
-                <ReportComponent {...widget.props} />
-              </DashboardWidget>
+                {renamingId === dashboard.id ? (
+                  <input
+                    className="dashboard-tab-rename"
+                    value={renameValue}
+                    autoFocus
+                    onChange={(event) => setRenameValue(event.target.value)}
+                    onBlur={submitRename}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") submitRename();
+                      if (event.key === "Escape") setRenamingId(null);
+                    }}
+                  />
+                ) : (
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={isActive}
+                    className="dashboard-tab-button"
+                    onClick={() => selectDashboard(dashboard.id)}
+                    onDoubleClick={() => startRename(dashboard)}
+                  >
+                    {dashboard.name}
+                    {Number(dashboard.is_default) === 1 && (
+                      <span className="dashboard-tab-default" title="Default dashboard">
+                        ★
+                      </span>
+                    )}
+                  </button>
+                )}
+                {isActive && renamingId !== dashboard.id && (
+                  <DashboardTabMenu
+                    dashboard={dashboard}
+                    application={application}
+                    onRename={() => startRename(dashboard)}
+                    onSetDefault={() =>
+                      setDefaultDashboard(dashboard.id).catch((err) => setError(err.message))
+                    }
+                    onDelete={() => requestDelete(dashboard)}
+                  />
+                )}
+              </div>
             );
           })}
+
+          {creating ? (
+            <input
+              className="dashboard-tab-rename"
+              value={createValue}
+              autoFocus
+              placeholder="Dashboard name"
+              onChange={(event) => setCreateValue(event.target.value)}
+              onBlur={submitCreate}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") submitCreate();
+                if (event.key === "Escape") {
+                  setCreating(false);
+                  setCreateValue("");
+                }
+              }}
+            />
+          ) : (
+            <button
+              type="button"
+              className="dashboard-tab-add"
+              title="New dashboard"
+              onClick={() => setCreating(true)}
+            >
+              + New
+            </button>
+          )}
         </div>
-      )}
+      </div>
+
+      <div className="dashboard-body">
+        {(error || dashboardError) && <p className="error">{error || dashboardError}</p>}
+
+        {loading ? (
+          <div className="panel dashboard-empty">
+            <p className="subtext">Loading dashboards...</p>
+          </div>
+        ) : resolvedWidgets.length === 0 ? (
+          <div className="panel dashboard-empty">
+            <p className="subtext">
+              {activeDashboard ? `"${activeDashboard.name}" is empty.` : "Your dashboard is empty."}
+            </p>
+            <div className="dashboard-empty-actions">
+              <button type="button" className="button-primary" onClick={() => setPickerOpen(true)}>
+                Add a report
+              </button>
+              <button type="button" onClick={() => setBuilderOpen(true)}>
+                Build custom report
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="dashboard-grid">
+            {resolvedWidgets.map((widget, index) => {
+              const ReportComponent = widget.component;
+              return (
+                <DashboardWidget
+                  key={widget.key}
+                  title={widget.title}
+                  description={widget.description}
+                  span={widget.span}
+                  onRemove={() => removeReport(widget.key)}
+                  onMoveLeft={index > 0 ? () => moveReport(widget.key, -1) : undefined}
+                  onMoveRight={
+                    index < resolvedWidgets.length - 1
+                      ? () => moveReport(widget.key, 1)
+                      : undefined
+                  }
+                  onToggleSpan={() =>
+                    setReportSpan(widget.key, widget.span >= 3 ? 1 : Number(widget.span || 1) + 1)
+                  }
+                  onEdit={
+                    widget.customReport ? () => setEditingReport(widget.customReport) : undefined
+                  }
+                >
+                  <ReportComponent {...widget.props} />
+                </DashboardWidget>
+              );
+            })}
+          </div>
+        )}
+      </div>
 
       {pickerOpen && (
         <ReportPickerModal

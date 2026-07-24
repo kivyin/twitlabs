@@ -1,8 +1,5 @@
-import { useState } from "react";
 import { useLocation } from "react-router-dom";
-import { Pencil } from "lucide-react";
 import { useFavorites } from "../context/FavoritesContext";
-import FavoriteEditModal from "./favorites/FavoriteEditModal";
 
 function StarIcon({ filled }) {
   return (
@@ -28,13 +25,10 @@ function StarIcon({ filled }) {
  */
 function FavoriteButton({ path, label }) {
   const location = useLocation();
-  const { favorites, isFavorite, toggleFavorite, updateFavorite } = useFavorites();
-  const [justAdded, setJustAdded] = useState(null);
-  const [editing, setEditing] = useState(false);
+  const { isFavorite, toggleFavorite } = useFavorites();
 
   const targetPath = path ?? `${location.pathname}${location.search}`;
   const favorited = isFavorite(targetPath);
-  const current = favorites.find((favorite) => favorite.path === targetPath);
 
   const resolveLabel = () => {
     if (label) return label;
@@ -44,44 +38,17 @@ function FavoriteButton({ path, label }) {
 
   const actionLabel = favorited ? "Remove from favorites" : "Add this page to favorites";
 
-  const handleToggle = async () => {
-    const result = await toggleFavorite({ path: targetPath, label: resolveLabel() });
-    setJustAdded(result);
-  };
-
-  const favoriteRecord = current || justAdded;
-
   return (
-    <span className="favorite-button-group">
-      <button
-        type="button"
-        className={`favorite-button${favorited ? " active" : ""}`}
-        aria-pressed={favorited}
-        aria-label={actionLabel}
-        title={actionLabel}
-        onClick={handleToggle}
-      >
-        <StarIcon filled={favorited} />
-      </button>
-      {favorited && favoriteRecord && (
-        <button
-          type="button"
-          className="favorite-button favorite-customize-button"
-          aria-label="Customize this favorite's icon and color"
-          title="Customize icon & color"
-          onClick={() => setEditing(true)}
-        >
-          <Pencil size={14} aria-hidden="true" />
-        </button>
-      )}
-      <FavoriteEditModal
-        key={favoriteRecord?.id ?? "closed"}
-        open={editing}
-        favorite={favoriteRecord}
-        onClose={() => setEditing(false)}
-        onSave={updateFavorite}
-      />
-    </span>
+    <button
+      type="button"
+      className={`favorite-button${favorited ? " active" : ""}`}
+      aria-pressed={favorited}
+      aria-label={actionLabel}
+      title={actionLabel}
+      onClick={() => toggleFavorite({ path: targetPath, label: resolveLabel() })}
+    >
+      <StarIcon filled={favorited} />
+    </button>
   );
 }
 

@@ -11,10 +11,13 @@ export const ACCOUNT_FORM_HIDDEN_FIELDS = new Set([
   "sort_order",
 ]);
 
-/** Only shown for credit cards and loans. */
-export const LIABILITY_ONLY_FIELDS = new Set(["apr", "minimum_payment", "credit_limit"]);
+/** APR / min payment for credit cards and loans. */
+export const LIABILITY_ONLY_FIELDS = new Set(["apr", "minimum_payment"]);
 
-/** Starting cash balance — bank-style accounts only (not cards, loans, or site logins). */
+/** Revolving limit — credit cards only (loans use opening_balance as starting owed). */
+export const CREDIT_CARD_ONLY_FIELDS = new Set(["credit_limit"]);
+
+/** Starting cash (banks) or starting amount owed (cards/loans). */
 export const OPENING_BALANCE_FIELD = "opening_balance";
 
 /** Hidden from the accounts list grid (sensitive, verbose, or managed elsewhere). */
@@ -72,7 +75,12 @@ export function sortAccountFormColumns(columns) {
 /** Whether a form field should appear for the selected account type. */
 export function isAccountFormFieldVisible(columnName, accountTypeName = "") {
   if (columnName === OPENING_BALANCE_FIELD) {
-    return !isLiabilityAccountType(accountTypeName) && !isSiteAccountType(accountTypeName);
+    // Banks: starting cash. Cards/loans: starting amount owed (before app transactions).
+    return !isSiteAccountType(accountTypeName);
+  }
+
+  if (CREDIT_CARD_ONLY_FIELDS.has(columnName)) {
+    return isLiabilityAccountType(accountTypeName) && !isLoanAccountType(accountTypeName);
   }
 
   if (LIABILITY_ONLY_FIELDS.has(columnName)) {
@@ -86,6 +94,16 @@ export function filterVisibleAccountFormColumns(columns, accountTypeName = "") {
   return columns.filter((column) => isAccountFormFieldVisible(column.name, accountTypeName));
 }
 
+export function getAccountOpeningBalanceLabel(accountTypeName = "") {
+  if (isLoanAccountType(accountTypeName)) {
+    return "Starting amount owed";
+  }
+  if (isLiabilityAccountType(accountTypeName)) {
+    return "Starting amount owed";
+  }
+  return "Opening balance";
+}
+
 /**
  * Values to write for type-specific fields that are hidden for the selected type,
  * so switching types does not leave stale credit limits / balances behind.
@@ -94,17 +112,16 @@ export function getHiddenAccountFieldDefaults(accountTypeName = "", existingValu
   const defaults = {};
 
   if (!isAccountFormFieldVisible(OPENING_BALANCE_FIELD, accountTypeName)) {
-    if (isLiabilityAccountType(accountTypeName)) {
-      // Keep existing opening balance for cards/loans (ledger still uses it); default new ones to 0.
-      const existing = existingValues[OPENING_BALANCE_FIELD];
-      defaults[OPENING_BALANCE_FIELD] =
-        existing === "" || existing === null || existing === undefined ? 0 : existing;
-    } else {
-      defaults[OPENING_BALANCE_FIELD] = 0;
-    }
+    defaults[OPENING_BALANCE_FIELD] = 0;
   }
 
   for (const fieldName of LIABILITY_ONLY_FIELDS) {
+    if (!isAccountFormFieldVisible(fieldName, accountTypeName)) {
+      defaults[fieldName] = null;
+    }
+  }
+
+  for (const fieldName of CREDIT_CARD_ONLY_FIELDS) {
     if (!isAccountFormFieldVisible(fieldName, accountTypeName)) {
       defaults[fieldName] = null;
     }

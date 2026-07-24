@@ -1,47 +1,87 @@
-const LCARS_CHILD_PALETTES = {
-  blue: {
-    text: "#0a1020",
-    tones: ["#8da6ff", "#a0b4ff", "#b3c2ff", "#c6d0ff"],
+/** Distinct LCARS section families — parent + children share a hue; children shift slightly. */
+const LCARS_SECTION_PALETTES = [
+  {
+    text: "#1a1000",
+    parent: "#ff9933",
+    children: ["#ffa64d", "#ffb366", "#ffc080"],
   },
-  gold: {
+  {
     text: "#1a1200",
-    tones: ["#ffd580", "#ffe099", "#ffebb3", "#fff0c2"],
+    parent: "#e8b060",
+    children: ["#efba72", "#f5c484", "#face96"],
   },
-};
-
-const LCARS_PARENT_PALETTE = {
-  text: "#1a1200",
-  tones: ["#e8b060", "#f0bc72", "#f5c888", "#fad9a0"],
-};
+  {
+    text: "#0a1020",
+    parent: "#8da6ff",
+    children: ["#9bb2ff", "#a9beff", "#b7caff"],
+  },
+  {
+    text: "#0a1020",
+    parent: "#b0b8ff",
+    children: ["#bcc3ff", "#c8ceff", "#d4d9ff"],
+  },
+  {
+    text: "#041510",
+    parent: "#66ccaa",
+    children: ["#78d4b6", "#8adcc2", "#9ce4ce"],
+  },
+  {
+    text: "#1a0810",
+    parent: "#cc6699",
+    children: ["#d478a8", "#dc8ab7", "#e49cc6"],
+  },
+  {
+    text: "#1a1000",
+    parent: "#ffcc99",
+    children: ["#ffd4a8", "#ffdcb8", "#ffe4c8"],
+  },
+  {
+    text: "#1a0808",
+    parent: "#ff5555",
+    children: ["#ff6e6e", "#ff8787", "#ffa0a0"],
+  },
+];
 
 export const LCARS_HOME_PALETTE = {
   text: "#0a1020",
-  tones: ["#99aaff", "#8da6ff", "#a8baff", "#b8c6ff"],
+  parent: "#8da6ff",
+  children: ["#9bb2ff", "#a9beff", "#b7caff"],
 };
 
 export const LCARS_DOCS_PALETTE = {
   text: "#1a1200",
-  tones: ["#f0c878", "#e8b060", "#f5d090", "#ffe099"],
+  parent: "#e8b060",
+  children: ["#efba72", "#f5c484", "#face96"],
 };
 
-/** Parent items stay gold/tan; children alternate blue then gold by group index. */
+/** One palette per nav section so parent + children read as a unit. */
 export function getLcarsNavPalette(index) {
-  const childKey = index % 2 === 0 ? "blue" : "gold";
+  const section = LCARS_SECTION_PALETTES[index % LCARS_SECTION_PALETTES.length];
   return {
-    text: LCARS_PARENT_PALETTE.text,
-    parent: LCARS_PARENT_PALETTE.tones[0],
-    childText: LCARS_CHILD_PALETTES[childKey].text,
-    tones: [LCARS_PARENT_PALETTE.tones[0], ...LCARS_CHILD_PALETTES[childKey].tones],
+    text: section.text,
+    parent: section.parent,
+    children: section.children,
+    tones: [section.parent, ...section.children],
   };
 }
 
 export function getLcarsLinkStyle(palette, toneIndex = 0) {
-  const isParent = toneIndex === 0;
-  const tone = palette.tones[Math.min(toneIndex, palette.tones.length - 1)];
-  const text = isParent ? palette.text : palette.childText || palette.text;
+  const tones = palette.tones ?? [
+    palette.parent,
+    ...(palette.children ?? []),
+  ];
+  const tone = tones[Math.min(toneIndex, tones.length - 1)] ?? palette.parent;
 
   return {
-    "--lcars-nav-bg": isParent && palette.parent ? palette.parent : tone,
-    "--lcars-nav-text": text,
+    "--lcars-nav-bg": tone,
+    "--lcars-nav-text": palette.text,
+  };
+}
+
+export function getLcarsGroupStyle(palette) {
+  if (!palette?.parent) return undefined;
+  return {
+    "--lcars-section-accent": palette.parent,
+    "--lcars-nav-text": palette.text,
   };
 }

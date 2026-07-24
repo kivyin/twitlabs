@@ -7,7 +7,12 @@ import CashFlowSankeyChart from "../components/CashFlowSankeyChart";
 import PageHeader from "../components/PageHeader";
 import { useAccountRegister } from "../hooks/useAccountRegister";
 import { formatCurrency } from "../utils/format";
-import { getAvailableCredit, getSignedAmountClass, isLiabilityAccountType } from "../utils/money";
+import {
+  getAvailableCredit,
+  getSignedAmountClass,
+  isLiabilityAccountType,
+  isLoanAccountType,
+} from "../utils/money";
 import { TABLE_PAGE_SIZE } from "../utils/tableList";
 
 function AccountRegisterPage() {
@@ -36,8 +41,10 @@ function AccountRegisterPage() {
   const balanceDifference =
     account ? Number(account.ledger_balance) - Number(account.balance) : 0;
   const isLiability = isLiabilityAccountType(account?.account_type_name);
-  const availableCredit =
-    account?.available_credit ?? getAvailableCredit(account?.ledger_balance, account?.credit_limit);
+  const isLoan = isLoanAccountType(account?.account_type_name);
+  const availableCredit = isLoan
+    ? null
+    : account?.available_credit ?? getAvailableCredit(account?.ledger_balance, account?.credit_limit);
 
   return (
     <>

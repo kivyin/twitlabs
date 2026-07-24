@@ -93,6 +93,7 @@ export function buildChartOption(kind, rows, config = {}) {
       name: String(row[xColumn] ?? "—"),
       value: Math.abs(Number(row[valueColumn]) || 0),
     }));
+    const showSliceLabels = config.showLabels !== false;
 
     return {
       color: CHART_PALETTE,
@@ -101,10 +102,25 @@ export function buildChartOption(kind, rows, config = {}) {
       series: [
         {
           type: "pie",
-          radius: kind === "donut" ? ["45%", "72%"] : "72%",
-          center: ["50%", "44%"],
+          radius: kind === "donut" ? ["40%", "62%"] : ["0%", "58%"],
+          center: ["50%", showSliceLabels ? "42%" : "44%"],
           data,
-          label: { show: data.length <= 10 },
+          label: showSliceLabels
+            ? {
+                show: true,
+                formatter: (params) =>
+                  `${params.name}\n${formatValue(params.value)} (${params.percent}%)`,
+                fontSize: 11,
+                lineHeight: 14,
+              }
+            : { show: false },
+          labelLine: showSliceLabels
+            ? {
+                show: true,
+                length: 14,
+                length2: 10,
+              }
+            : { show: false },
           emphasis: {
             itemStyle: { shadowBlur: 10, shadowOffsetX: 0, shadowColor: "rgba(0,0,0,0.3)" },
           },

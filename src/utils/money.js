@@ -17,11 +17,23 @@ export function isMoneyField(table, fieldName) {
 }
 
 export function isLiabilityAccountType(typeName) {
-  return LIABILITY_ACCOUNT_TYPES.has(typeName);
+  const normalized = String(typeName || "").trim().toLowerCase();
+  if (!normalized) return false;
+  if (LIABILITY_ACCOUNT_TYPES.has(typeName)) return true;
+  return (
+    normalized === "loan" ||
+    normalized === "credit card" ||
+    normalized.includes("loan") ||
+    normalized.includes("credit card") ||
+    normalized.includes("creditcard")
+  );
 }
 
 export function isLoanAccountType(typeName = "") {
-  return typeName === LOAN_TYPE_NAME;
+  const normalized = String(typeName || "").trim().toLowerCase();
+  if (!normalized) return false;
+  if (typeName === LOAN_TYPE_NAME) return true;
+  return normalized === "loan" || (normalized.includes("loan") && !normalized.includes("credit"));
 }
 
 export function parseMoneyValue(value) {
@@ -251,6 +263,20 @@ export function validateCategorySignedAmount(amount, categoryType, accountTypeNa
   return numeric;
 }
 
+/**
+ * Liability forms collect a positive amount plus Payment/Charge mode.
+ * Payments reduce amount owed (stored negative); charges increase it (stored positive).
+ */
+export function resolveLiabilityTransactionAmount(amount, entryMode = "payment") {
+  const numeric = validateNonZeroMoney(amount, "Amount");
+  const absolute = Math.abs(numeric);
+  return entryMode === "charge" ? absolute : -absolute;
+}
+
+export function getDefaultLiabilityEntryMode(accountTypeName = "") {
+  return isLoanAccountType(accountTypeName) ? "payment" : "charge";
+}
+
 export function validateTransferPrimaryAmount(amount) {
   return validateNonZeroMoney(amount, "Amount");
 }
@@ -328,8 +354,11 @@ export function normalizeBudgetMoneyField(table, fieldName, value, context = {})
 
 export function getMoneyFieldHint(table, fieldName, context = {}) {
   if (table === "accounts" && fieldName === "opening_balance") {
+    if (isLoanAccountType(context.accountTypeName)) {
+      return "What you still owe when you start tracking this loan. Payments (negative) walk this down; you do not need a separate first charge for the principal.";
+    }
     if (isLiabilityAccountType(context.accountTypeName)) {
-      return "Starting amount owed before any transactions in this app. Running balance owed = opening balance + charges − payments.";
+      return "Starting amount owed before any transactions in this app. Running balance owed = opening + charges − payments.";
     }
     return "Starting balance before any transactions in this app. Running balance = opening balance + transactions.";
   }
@@ -342,7 +371,7 @@ export function getMoneyFieldHint(table, fieldName, context = {}) {
   }
 
   if (table === "accounts" && fieldName === "credit_limit") {
-    return "Optional. Used to calculate available credit (credit limit minus amount owed).";
+    return "Revolving credit card limit only. Available credit = limit − amount owed. Not used for loans.";
   }
 
   if (table === "accounts" && fieldName === "apr") {

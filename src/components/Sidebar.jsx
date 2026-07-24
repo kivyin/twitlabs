@@ -1,15 +1,23 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, NavLink, useLocation } from "react-router-dom";
-import { Clock3, LayoutList, Pencil, Star } from "lucide-react";
+import { Clock3, LayoutList, ListOrdered, Pencil, Star } from "lucide-react";
 import { getNavigation, groupNavigationItems } from "../api/navigationApi";
 import { useAuth } from "../context/AuthContext";
 import { useBrowseStack } from "../context/BrowseStackContext";
 import { useFavorites } from "../context/FavoritesContext";
 import { useBranding } from "../context/BrandingContext";
 import { useTheme } from "../context/ThemeContext";
+import { useNavLayoutPreferences } from "../hooks/useNavLayoutPreferences";
 import { locationToPath } from "../utils/browseStack";
 import { getNavIcon, navIcons } from "../utils/navIcons";
-import { getLcarsLinkStyle, getLcarsNavPalette, LCARS_DOCS_PALETTE, LCARS_HOME_PALETTE } from "../utils/lcarsNavColors";
+import {
+  getLcarsGroupStyle,
+  getLcarsLinkStyle,
+  getLcarsNavPalette,
+  LCARS_DOCS_PALETTE,
+  LCARS_HOME_PALETTE,
+} from "../utils/lcarsNavColors";
+import { applyNavLayout, getNavLayoutCatalog } from "../utils/navLayout";
 import { renderFavoriteIcon } from "../utils/favoriteIcons";
 import {
   buildSidebarHistoryEntries,
@@ -17,8 +25,10 @@ import {
 } from "../utils/sidebarHistory";
 import { AppBrandText, BrandMark } from "./AppBrand";
 import BrandSettingsModal from "./BrandSettingsModal";
+import ColumnPickerModal from "./ColumnPickerModal";
 import FavoriteEditModal from "./favorites/FavoriteEditModal";
 import ThemeToggle from "./ThemeToggle";
+import VersionStatusIndicator from "./VersionStatusIndicator";
 
 const SIDEBAR_TABS = [
   { id: "nav", label: "Nav", Icon: LayoutList },
@@ -48,28 +58,6 @@ function Icon({ path, size = 18 }) {
     >
       {path}
     </svg>
-  );
-}
-
-function PinIcon({ filled = false }) {
-  return (
-    <Icon
-      path={
-        filled ? (
-          <>
-            <path d="M12 17v5" />
-            <path d="M9 3h6l1 7h4l-3 7H7L4 10h4z" />
-          </>
-        ) : (
-          <>
-            <path d="M12 17v5" />
-            <path d="M9 3h6l1 7h4l-3 7H7L4 10h4z" />
-            <path d="M9 3 7.5 10" />
-          </>
-        )
-      }
-      size={16}
-    />
   );
 }
 
@@ -109,12 +97,17 @@ function SidebarNavGroup({
   const childItems = children ?? [];
   const hasChildren = childItems.length > 0;
   const expanded = forceExpanded || groupExpanded;
-  const showChildren = (sidebarExpanded || forceExpanded) && hasChildren && expanded;
+  // LCARS keeps a fixed-width rail, so children stay available when the group is open.
+  const showChildren = hasChildren && expanded && (sidebarExpanded || isLcars || forceExpanded);
+  const showToggle = hasChildren && !compact && !forceExpanded;
 
   return (
-    <div className="sidebar-group">
+    <div
+      className="sidebar-group"
+      style={isLcars && lcarsPalette ? getLcarsGroupStyle(lcarsPalette) : undefined}
+    >
       <div className={`sidebar-group-row${hasChildren ? "" : " sidebar-group-row-leaf"}`}>
-        {hasChildren && !compact && !forceExpanded ? (
+        {showToggle ? (
           <button
             type="button"
             className="sidebar-group-toggle"
@@ -168,19 +161,17 @@ function SidebarNavGroup({
 
 function Sidebar({
   onNavigate,
-  onSignOut,
-  isPinned,
+  onSignOut: _onSignOut,
   isCollapsed,
   isExpanded,
   activeTab = "nav",
   onActiveTabChange,
-  onTogglePinned,
   onToggleCollapsed,
   isNavGroupCollapsed,
   toggleNavGroup,
-  expandNavGroup,
+  collapseAllNavGroups,
 }) {
-  const { user, isAdmin } = useAuth();
+  const { isAdmin } = useAuth();
   const { favorites, deleteFavorite, updateFavorite } = useFavorites();
   const { stack, clearStack } = useBrowseStack();
   const { fullTitle } = useBranding();
@@ -190,6 +181,7 @@ function Sidebar({
   const [navItems, setNavItems] = useState([]);
   const [brandSettingsOpen, setBrandSettingsOpen] = useState(false);
   const [editingFavorite, setEditingFavorite] = useState(null);
+  const [navLayoutOpen, setNavLayoutOpen] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -207,9 +199,24 @@ function Sidebar({
     };
   }, []);
 
+  const groupedNav = useMemo(() => groupNavigationItems(navItems), [navItems]);
+
+  const navCatalog = useMemo(
+    () =>
+      getNavLayoutCatalog(
+        groupedNav.appMains,
+        groupedNav.adminMains,
+        groupedNav.childrenByParent
+      ),
+    [groupedNav]
+  );
+
+  const { visibleNavIds, setVisibleNavIds, resetNavLayout, hasCustomLayout } =
+    useNavLayoutPreferences(navCatalog.catalogIds);
+
   const { appMains, adminMains, childrenByParent } = useMemo(
-    () => groupNavigationItems(navItems),
-    [navItems]
+    () => applyNavLayout(groupedNav, visibleNavIds),
+    [groupedNav, visibleNavIds]
   );
 
   const currentPath = locationToPath(location);
@@ -218,34 +225,11 @@ function Sidebar({
     [stack, currentPath]
   );
 
-  const displayName = user?.display_name || user?.username || "";
-  const initial = displayName.charAt(0) || "?";
   const compact = isCollapsed;
 
   useEffect(() => {
-    if (activeTab !== "nav") {
-      return;
-    }
-
-    for (const main of [...appMains, ...adminMains]) {
-      const childItems = childrenByParent.get(main.id) ?? [];
-      if (childItems.length === 0) {
-        continue;
-      }
-
-      const isActiveGroup =
-        location.pathname === main.path ||
-        childItems.some(
-          (child) =>
-            location.pathname === child.path ||
-            location.pathname.startsWith(`${child.path}/`)
-        );
-
-      if (isActiveGroup) {
-        expandNavGroup(main.id);
-      }
-    }
-  }, [activeTab, location.pathname, appMains, adminMains, childrenByParent, expandNavGroup]);
+    collapseAllNavGroups?.();
+  }, [collapseAllNavGroups]);
 
   const navItemClass = ({ isActive }) => `sidebar-link${isActive ? " active" : ""}`;
   const subItemClass = ({ isActive }) =>
@@ -271,22 +255,10 @@ function Sidebar({
         <div className="sidebar-controls">
           <button
             type="button"
-            className={`sidebar-control${isPinned ? " active" : ""}`}
-            aria-label={isPinned ? "Unpin sidebar open" : "Pin sidebar open"}
-            aria-pressed={isPinned}
-            title={isPinned ? "Unpin sidebar" : "Pin sidebar open"}
-            onClick={onTogglePinned}
-          >
-            <PinIcon filled={isPinned} />
-          </button>
-          <button
-            type="button"
             className="sidebar-control"
             aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
             aria-expanded={!isCollapsed}
-            title={
-              isPinned ? "Unpin and collapse" : isCollapsed ? "Expand sidebar" : "Collapse sidebar"
-            }
+            title={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
             onClick={onToggleCollapsed}
           >
             <Icon
@@ -305,6 +277,15 @@ function Sidebar({
               }
               size={16}
             />
+          </button>
+          <button
+            type="button"
+            className={`sidebar-control${hasCustomLayout ? " active" : ""}`}
+            aria-label="Customize navigation"
+            title="Customize navigation"
+            onClick={() => setNavLayoutOpen(true)}
+          >
+            <ListOrdered size={16} aria-hidden="true" />
           </button>
           <ThemeToggle className="sidebar-control theme-toggle-sidebar" compactLabel />
         </div>
@@ -351,15 +332,7 @@ function Sidebar({
       >
         {activeTab === "nav" && (
           <>
-            {isLcars ? (
-              <div className="lcars-menu-cap" aria-hidden="true">
-                <span className="lcars-menu-cap-end" />
-                <span className="lcars-menu-cap-label">Menu</span>
-                <span className="lcars-menu-cap-end" />
-              </div>
-            ) : (
-              <p className="sidebar-section">Workspaces</p>
-            )}
+            {isLcars ? null : <p className="sidebar-section">Workspaces</p>}
             <NavLink
               to="/"
               end
@@ -407,7 +380,6 @@ function Sidebar({
                     compact={compact}
                     groupExpanded={!isNavGroupCollapsed(main.id)}
                     onToggleGroup={() => toggleNavGroup(main.id)}
-                    forceExpanded={isLcars}
                     isLcars={isLcars}
                     lcarsPalette={isLcars ? getLcarsNavPalette(index) : null}
                   />
@@ -430,7 +402,6 @@ function Sidebar({
                     compact={compact}
                     groupExpanded={!isNavGroupCollapsed(main.id)}
                     onToggleGroup={() => toggleNavGroup(main.id)}
-                    forceExpanded={isLcars}
                     isLcars={isLcars}
                     lcarsPalette={isLcars ? getLcarsNavPalette(appMains.length + index) : null}
                   />
@@ -536,12 +507,7 @@ function Sidebar({
       </nav>
 
       <div className="sidebar-foot">
-        <span className="sidebar-user" title={compact ? displayName : undefined}>
-          <span className="nav-avatar" aria-hidden="true">
-            {initial}
-          </span>
-          <span className="sidebar-user-name sidebar-label">{displayName}</span>
-        </span>
+        <VersionStatusIndicator compact={compact && !isLcars} />
         <button
           type="button"
           className="brand-settings-button"
@@ -560,16 +526,6 @@ function Sidebar({
           />
           <span className="sidebar-label">Branding</span>
         </button>
-        <button
-          type="button"
-          className="signout-button"
-          onClick={onSignOut}
-          title={compact ? "Sign out" : undefined}
-          aria-label={compact ? "Sign out" : undefined}
-        >
-          <Icon path={<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4m7 14 5-5-5-5m5 5H9" />} size={16} />
-          <span className="sidebar-label">Sign out</span>
-        </button>
       </div>
     </aside>
 
@@ -580,6 +536,22 @@ function Sidebar({
       favorite={editingFavorite}
       onClose={() => setEditingFavorite(null)}
       onSave={updateFavorite}
+    />
+    <ColumnPickerModal
+      open={navLayoutOpen}
+      onClose={() => setNavLayoutOpen(false)}
+      onApply={setVisibleNavIds}
+      onReset={resetNavLayout}
+      availableColumns={navCatalog.catalogIds}
+      selectedColumns={visibleNavIds}
+      columnLabels={navCatalog.labels}
+      title="Customize navigation"
+      description="Move items between Available and Selected. Order on the right controls the left navigation. Home and Documentation stay fixed."
+      availableHeading="Available"
+      selectedHeading="Visible in nav"
+      availableAriaLabel="Available navigation items"
+      selectedAriaLabel="Visible navigation items"
+      allowEmpty
     />
     </>
   );

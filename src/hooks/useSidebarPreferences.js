@@ -6,10 +6,9 @@ const STORAGE_PREFIX = "twitlabs-sidebar-preferences";
 const SIDEBAR_TABS = new Set(["nav", "favorites", "history"]);
 
 const DEFAULT_PREFERENCES = {
-  pinned: true,
   collapsed: false,
   activeTab: "nav",
-  // Empty = all nav menus collapsed on load; active section is expanded by Sidebar.
+  // Empty = all nav menus collapsed on load.
   expandedNavGroups: [],
 };
 
@@ -37,10 +36,9 @@ function readPreferences(storageKey) {
     const parsed = JSON.parse(raw);
 
     return {
-      pinned: Boolean(parsed.pinned),
       collapsed: Boolean(parsed.collapsed),
       activeTab: normalizeActiveTab(parsed.activeTab),
-      // Nav menus always start collapsed on load; only the active section opens.
+      // Nav menus always start collapsed on load.
       expandedNavGroups: [],
     };
   } catch {
@@ -53,11 +51,10 @@ function writePreferences(storageKey, preferences) {
     return;
   }
 
-  // Persist rail pin/collapse + active tab — menu expand state resets each page load.
+  // Persist rail collapse + active tab — menu expand state resets each page load.
   localStorage.setItem(
     storageKey,
     JSON.stringify({
-      pinned: preferences.pinned,
       collapsed: preferences.collapsed,
       activeTab: normalizeActiveTab(preferences.activeTab),
     })
@@ -96,37 +93,18 @@ export function useSidebarPreferences() {
     writePreferences(storageKey, preferences);
   }, [preferences, storageKey]);
 
-  const isPinned = preferences.pinned;
-  const isCollapsed = !isPinned && preferences.collapsed;
-  const isExpanded = isPinned || !preferences.collapsed;
+  const isCollapsed = Boolean(preferences.collapsed);
+  const isExpanded = !isCollapsed;
   const expandedNavGroupSet = useMemo(
     () => new Set(preferences.expandedNavGroups),
     [preferences.expandedNavGroups]
   );
 
-  const setPinned = useCallback((pinned) => {
-    setPreferences((current) => ({
-      ...current,
-      pinned,
-      collapsed: pinned ? false : current.collapsed,
-    }));
-  }, []);
-
-  const togglePinned = useCallback(() => {
-    setPreferences((current) => ({
-      ...current,
-      pinned: !current.pinned,
-      collapsed: !current.pinned ? false : current.collapsed,
-    }));
-  }, []);
-
   const toggleCollapsed = useCallback(() => {
-    setPreferences((current) => {
-      if (current.pinned) {
-        return { ...current, pinned: false, collapsed: true };
-      }
-      return { ...current, collapsed: !current.collapsed };
-    });
+    setPreferences((current) => ({
+      ...current,
+      collapsed: !current.collapsed,
+    }));
   }, []);
 
   const isNavGroupCollapsed = useCallback(
@@ -161,6 +139,15 @@ export function useSidebarPreferences() {
     });
   }, []);
 
+  const collapseAllNavGroups = useCallback(() => {
+    setPreferences((current) => {
+      if (!(current.expandedNavGroups ?? []).length) {
+        return current;
+      }
+      return { ...current, expandedNavGroups: [] };
+    });
+  }, []);
+
   const setActiveTab = useCallback((tab) => {
     setPreferences((current) => {
       const nextTab = normalizeActiveTab(tab);
@@ -172,15 +159,14 @@ export function useSidebarPreferences() {
   }, []);
 
   return {
-    isPinned,
     isCollapsed,
     isExpanded,
     activeTab: normalizeActiveTab(preferences.activeTab),
     setActiveTab,
-    togglePinned,
     toggleCollapsed,
     isNavGroupCollapsed,
     toggleNavGroup,
     expandNavGroup,
+    collapseAllNavGroups,
   };
 }

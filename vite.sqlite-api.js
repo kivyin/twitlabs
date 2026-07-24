@@ -64,6 +64,120 @@ const dbPath = resolveDbPath();
 mkdirSync(path.dirname(dbPath), { recursive: true });
 const db = new DatabaseSync(dbPath);
 
+const GITHUB_REPO = process.env.GITHUB_REPO?.trim() || "kivyin/twitlabs";
+const VERSION_CHECK_TTL_MS = 60 * 60 * 1000;
+let versionCheckCache = null;
+
+function readPackageVersion() {
+  try {
+    const pkg = JSON.parse(readFileSync(path.resolve(process.cwd(), "package.json"), "utf8"));
+    return String(pkg.version || "0.0.0");
+  } catch {
+    return "0.0.0";
+  }
+}
+
+function normalizeReleaseVersion(value) {
+  return String(value || "")
+    .trim()
+    .replace(/^v/i, "")
+    .split(/[+/]/)[0];
+}
+
+function compareReleaseVersions(left, right) {
+  const a = normalizeReleaseVersion(left)
+    .split(".")
+    .map((part) => parseInt(part.replace(/[^0-9].*$/, ""), 10) || 0);
+  const b = normalizeReleaseVersion(right)
+    .split(".")
+    .map((part) => parseInt(part.replace(/[^0-9].*$/, ""), 10) || 0);
+  const length = Math.max(a.length, b.length);
+  for (let index = 0; index < length; index += 1) {
+    const delta = (a[index] || 0) - (b[index] || 0);
+    if (delta > 0) return 1;
+    if (delta < 0) return -1;
+  }
+  return 0;
+}
+
+async function fetchLatestGitHubRelease() {
+  const now = Date.now();
+  if (
+    versionCheckCache &&
+    now - versionCheckCache.fetchedAt < VERSION_CHECK_TTL_MS &&
+    versionCheckCache.ok
+  ) {
+    return versionCheckCache;
+  }
+
+  const current = process.env.APP_VERSION?.trim() || readPackageVersion();
+  const repo = GITHUB_REPO;
+
+  try {
+    const response = await fetch(`https://api.github.com/repos/${repo}/releases/latest`, {
+      headers: {
+        Accept: "application/vnd.github+json",
+        "User-Agent": "twitlabs-version-check",
+        "X-GitHub-Api-Version": "2022-11-28",
+      },
+    });
+
+    if (!response.ok) {
+      const message = `GitHub release check failed (${response.status}).`;
+      versionCheckCache = {
+        ok: false,
+        fetchedAt: now,
+        payload: {
+          status: "unknown",
+          current,
+          latest: null,
+          releaseUrl: `https://github.com/${repo}/releases`,
+          releaseName: null,
+          repo,
+          error: message,
+          checkedAt: new Date(now).toISOString(),
+        },
+      };
+      return versionCheckCache;
+    }
+
+    const release = await response.json();
+    const latest = normalizeReleaseVersion(release.tag_name || release.name || "");
+    const updateAvailable = latest ? compareReleaseVersions(latest, current) > 0 : false;
+
+    versionCheckCache = {
+      ok: true,
+      fetchedAt: now,
+      payload: {
+        status: updateAvailable ? "update-available" : "up-to-date",
+        current: normalizeReleaseVersion(current),
+        latest: latest || null,
+        releaseUrl: release.html_url || `https://github.com/${repo}/releases`,
+        releaseName: release.name || release.tag_name || null,
+        repo,
+        checkedAt: new Date(now).toISOString(),
+      },
+    };
+    return versionCheckCache;
+  } catch (error) {
+    versionCheckCache = {
+      ok: false,
+      fetchedAt: now,
+      payload: {
+        status: "error",
+        current: normalizeReleaseVersion(current),
+        latest: null,
+        releaseUrl: `https://github.com/${repo}/releases`,
+        releaseName: null,
+        repo,
+        error: error?.message || "GitHub release check failed.",
+        checkedAt: new Date(now).toISOString(),
+      },
+    };
+    return versionCheckCache;
+  }
+}
+
 const ATTACHMENTS_DIR = path.join(DATA_ROOT, "attachments");
 const ACCOUNT_IMAGES_DIR = path.join(DATA_ROOT, "account-images");
 const LOGS_DIR = path.join(DATA_ROOT, "logs");
@@ -236,7 +350,20 @@ const ACCOUNT_FIELD_LABELS = {
   user_id: "Added by",
 };
 
-const isLiabilityAccountTypeName = (typeName) => LIABILITY_ACCOUNT_TYPES.has(typeName);
+const isLiabilityAccountTypeName = (typeName) => {
+  const normalized = String(typeName || "")
+    .trim()
+    .toLowerCase();
+  if (!normalized) return false;
+  if (LIABILITY_ACCOUNT_TYPES.has(typeName)) return true;
+  return (
+    normalized === "loan" ||
+    normalized === "credit card" ||
+    normalized.includes("loan") ||
+    normalized.includes("credit card") ||
+    normalized.includes("creditcard")
+  );
+};
 
 // In-memory sessions: token → { user, lastSeenAt, mustChangePassword }
 const sessions = new Map();
@@ -856,6 +983,32 @@ const ensureAccountsSchema = () => {
       )
       WHERE id = NEW.id;
     END
+  `);
+
+  // Loans that stored principal in credit_limit (old UX) → opening_balance.
+  // Skip when a positive charge already posted (that charge is likely the principal).
+  run(`
+    UPDATE ${ACCOUNTS_TABLE}
+    SET
+      opening_balance = credit_limit,
+      balance = CAST(credit_limit AS REAL) + (
+        SELECT COALESCE(SUM(t.amount), 0)
+        FROM ${TRANSACTIONS_TABLE} t
+        WHERE t.account_id = ${ACCOUNTS_TABLE}.id
+      ),
+      credit_limit = NULL
+    WHERE account_type_id IN (
+      SELECT id FROM ${ACCOUNT_TYPES_TABLE} WHERE LOWER(name) = 'loan'
+    )
+      AND COALESCE(opening_balance, 0) = 0
+      AND credit_limit IS NOT NULL
+      AND CAST(credit_limit AS REAL) > 0
+      AND NOT EXISTS (
+        SELECT 1
+        FROM ${TRANSACTIONS_TABLE} t
+        WHERE t.account_id = ${ACCOUNTS_TABLE}.id
+          AND CAST(t.amount AS REAL) > 0.005
+      )
   `);
 
   run(`
@@ -4558,18 +4711,7 @@ const validateTransactionPayload = ({
     const categoryType = getCategoryType(category_id);
     const accountTypeName = getAccountTypeNameForAccountId(account_id);
 
-    if (isLiabilityAccountTypeName(accountTypeName)) {
-      if (categoryType === "expense" && numericAmount < 0) {
-        throw new Error(
-          "Charges on credit cards and loans must be positive (increases amount owed)."
-        );
-      }
-      if (categoryType === "income" && numericAmount > 0) {
-        throw new Error(
-          "Payments and credits on credit cards and loans must be negative (reduces amount owed)."
-        );
-      }
-    } else {
+    if (!isLiabilityAccountTypeName(accountTypeName)) {
       if (categoryType === "income" && numericAmount < 0) {
         throw new Error("Income must be entered as a positive amount (deposit).");
       }
@@ -8048,12 +8190,19 @@ export function sqliteApiPlugin() {
           const requestPath = (req.url || "").split("?")[0];
           const isPublicApi =
             (req.method === "GET" && requestPath === "/api/health") ||
+            (req.method === "GET" && requestPath === "/api/version") ||
             (req.method === "POST" && requestPath === "/api/auth/login") ||
             (req.method === "POST" && requestPath === "/api/auth/logout") ||
             (req.method === "POST" && requestPath === "/api/logs");
 
           if (req.method === "GET" && requestPath === "/api/health") {
             json(res, 200, { ok: true });
+            return;
+          }
+
+          if (req.method === "GET" && requestPath === "/api/version") {
+            const result = await fetchLatestGitHubRelease();
+            json(res, 200, result.payload);
             return;
           }
 

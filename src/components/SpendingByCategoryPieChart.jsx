@@ -120,6 +120,7 @@ function SpendingByCategoryPieChart({
       valueColumns: ["value"],
       valueFormat: "currency",
       legend: true,
+      showLabels: true,
     });
   }, [rows]);
 

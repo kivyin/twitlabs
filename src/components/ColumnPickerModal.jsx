@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 
 /**
- * Dual-list (slush bucket) column picker: available on the left, selected on the right.
+ * Dual-list (slush bucket) picker: available on the left, selected on the right.
+ * Used for table columns and sidebar navigation layout.
  */
 function ColumnPickerModal({
   open,
@@ -12,7 +13,16 @@ function ColumnPickerModal({
   selectedColumns = [],
   columnLabels = {},
   title = "Choose columns",
+  description = "Move columns between Available and Selected. Order on the right controls the table display order.",
+  availableHeading = "Available",
+  selectedHeading = "Selected",
+  availableAriaLabel = "Available columns",
+  selectedAriaLabel = "Selected columns",
+  applyLabel = "Apply",
+  minSelected = 1,
+  allowEmpty = false,
 }) {
+  const minimum = allowEmpty ? 0 : Math.max(0, minSelected);
   const [draftSelected, setDraftSelected] = useState(selectedColumns);
   const [leftFocus, setLeftFocus] = useState([]);
   const [rightFocus, setRightFocus] = useState([]);
@@ -39,7 +49,7 @@ function ColumnPickerModal({
 
   const moveToAvailable = () => {
     if (rightFocus.length === 0) return;
-    if (draftSelected.length - rightFocus.length < 1) return;
+    if (draftSelected.length - rightFocus.length < minimum) return;
     setDraftSelected((current) => current.filter((column) => !rightFocus.includes(column)));
     setRightFocus([]);
   };
@@ -69,7 +79,7 @@ function ColumnPickerModal({
   };
 
   const handleApply = () => {
-    if (draftSelected.length === 0) return;
+    if (draftSelected.length < minimum) return;
     onApply?.(draftSelected);
     onClose?.();
   };
@@ -91,15 +101,12 @@ function ColumnPickerModal({
         onClick={(event) => event.stopPropagation()}
       >
         <h2 id="column-picker-title">{title}</h2>
-        <p className="subtext">
-          Move columns between Available and Selected. Order on the right controls the table
-          display order.
-        </p>
+        <p className="subtext">{description}</p>
 
         <div className="slush-bucket">
           <div className="slush-bucket-pane">
             <div className="slush-bucket-pane-head">
-              <strong>Available</strong>
+              <strong>{availableHeading}</strong>
               <span className="subtext">{available.length}</span>
             </div>
             <select
@@ -111,7 +118,7 @@ function ColumnPickerModal({
                 setLeftFocus(Array.from(event.target.selectedOptions, (option) => option.value))
               }
               onDoubleClick={moveToSelected}
-              aria-label="Available columns"
+              aria-label={availableAriaLabel}
             >
               {available.map((column) => (
                 <option key={column} value={column}>
@@ -128,7 +135,9 @@ function ColumnPickerModal({
             <button
               type="button"
               onClick={moveToAvailable}
-              disabled={rightFocus.length === 0 || draftSelected.length - rightFocus.length < 1}
+              disabled={
+                rightFocus.length === 0 || draftSelected.length - rightFocus.length < minimum
+              }
             >
               ← Remove
             </button>
@@ -142,7 +151,7 @@ function ColumnPickerModal({
 
           <div className="slush-bucket-pane">
             <div className="slush-bucket-pane-head">
-              <strong>Selected</strong>
+              <strong>{selectedHeading}</strong>
               <span className="subtext">{draftSelected.length}</span>
             </div>
             <select
@@ -154,7 +163,7 @@ function ColumnPickerModal({
                 setRightFocus(Array.from(event.target.selectedOptions, (option) => option.value))
               }
               onDoubleClick={moveToAvailable}
-              aria-label="Selected columns"
+              aria-label={selectedAriaLabel}
             >
               {draftSelected.map((column) => (
                 <option key={column} value={column}>
@@ -176,9 +185,9 @@ function ColumnPickerModal({
             type="button"
             className="button-primary"
             onClick={handleApply}
-            disabled={draftSelected.length === 0}
+            disabled={draftSelected.length < minimum}
           >
-            Apply
+            {applyLabel}
           </button>
         </div>
       </div>
