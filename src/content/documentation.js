@@ -273,7 +273,7 @@ const DOC_APPS = {
         sections: [
           section("Main areas", [
             "Home dashboard — widgets for balances, bills, goals, cash flow, and more.",
-            "Accounts — where money lives (checking, credit cards, loans, site logins).",
+            "Accounts — where money lives (checking, credit cards, lines of credit, loans, site logins).",
             "Account register — checkbook view for one account.",
             "Transactions — income, expenses, transfers, splits, import, and receipt scan.",
             "Categories & budgets — organize spending and set monthly limits.",
@@ -306,7 +306,8 @@ const DOC_APPS = {
           section("When to use", "Create an account for each place you hold money or track a balance. Transactions post against an account."),
           section("Account types control the form", [
             "Bank checking / savings — opening balance and cash balance fields.",
-            "Credit card — starting amount owed, credit limit, APR, and minimum payment. Balance is amount owed.",
+            "Credit card — starting amount owed, credit limit, APR, and minimum payment. Balance is amount owed. Optimized for point-of-sale charges.",
+            "Line of credit — starting amount owed, credit limit, APR, and minimum payment (same revolving fields as a card). Designed for cash draws: use Transfer to move funds to a bank or to pay down a credit card/loan.",
             "Loan — starting amount owed (principal when you begin tracking), APR, and minimum payment. On transactions choose Payment and enter a positive amount to pay it down (or use a bank→loan transfer).",
             "Site account — login URL, username, and password; no money fields.",
           ]),
@@ -329,12 +330,12 @@ const DOC_APPS = {
         ],
         fields: [
           field("name", "Name", "Display name, such as Chase Checking."),
-          field("account_type_id", "Account type", "Bank checking/savings, credit card, loan, or site account. Controls which money and login fields appear."),
+          field("account_type_id", "Account type", "Bank checking/savings, credit card, line of credit, loan, or site account. Controls which money and login fields appear."),
           field("owner_user_id", "Owner", "Person whose name is on the account. Separate from who added the account in the app."),
           field("is_joint", "Joint account", "Yes if additional people share the account. When Yes, select joint users on the form."),
-          field("opening_balance", "Opening / starting owed", "Banks: starting cash. Credit cards and loans: starting amount owed before app transactions. For loans, enter the principal you still owe — payments then reduce it."),
+          field("opening_balance", "Opening / starting owed", "Banks: starting cash. Credit cards, lines of credit, and loans: starting amount owed before app transactions. For loans, enter the principal you still owe — payments then reduce it."),
           field("balance", "Balance", "Current balance maintained by transactions. Not edited directly on the form — use Sync on the register if stored balance diverges from the ledger."),
-          field("credit_limit", "Credit limit", "Credit cards only. Available credit is limit minus amount owed. Loans use Starting amount owed instead."),
+          field("credit_limit", "Credit limit", "Credit cards and lines of credit. Available credit is limit minus amount owed. Loans use Starting amount owed instead."),
           field("apr", "APR (%)", "Annual percentage rate for debt planner reports."),
           field("minimum_payment", "Minimum payment", "Typical minimum payment for debt planning."),
           field("account_number", "Account number", "Optional reference number for your records."),
@@ -351,7 +352,7 @@ const DOC_APPS = {
         summary: "Lookup list for account classifications.",
         sections: listWorkflowSections("Account types"),
         fields: [
-          field("name", "Name", "Type label such as Bank Checking, Credit Card, Loan, or Site account."),
+          field("name", "Name", "Type label such as Bank Checking, Credit Card, Line of Credit, Loan, or Site account."),
         ],
       },
       "account-register": {
@@ -470,13 +471,13 @@ const DOC_APPS = {
           ]),
           section("Amount signs", [
             "Expenses are usually negative on asset (bank) accounts; income is usually positive.",
-            "Credit card and loan accounts may use the opposite convention — follow on-form hints.",
+            "Credit card and loan (and line of credit) accounts may use the opposite convention — follow on-form hints.",
             "Category type (income / expense / transfer) also guides expected signs.",
           ]),
           section("Transfers", [
             "Open New transfer (or Transfer from an account register) instead of the regular transaction form.",
             "Choose From account → To account and enter a positive amount, plus date, memo, and category.",
-            "The app posts linked entries with the correct signs: savings→checking moves money; bank→credit card/loan is a payment; credit card→bank is a cash advance.",
+            "The app posts linked entries with the correct signs: savings→checking moves money; bank→credit card/loan/LOC is a payment; credit card→bank is a cash advance; line of credit→bank draws cash (owed up, cash up); line of credit→credit card/loan draws to pay down the other debt (owed up on LOC, owed down on the destination).",
             "A live preview shows both signed amounts before you save. Use Swap to reverse From and To.",
             "Editing either linked row opens the same From → To form. Transfers do not use split lines.",
           ]),

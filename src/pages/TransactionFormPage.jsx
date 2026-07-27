@@ -23,6 +23,7 @@ import {
   getMoneyFieldHint,
   getSignedAmountClass,
   isLiabilityAccountType,
+  isLineOfCreditAccountType,
   isLoanAccountType,
   resolveLiabilityTransactionAmount,
   validateCategorySignedAmount,
@@ -272,12 +273,13 @@ function TransactionFormPage() {
   const selectedAccountType = accountTypeById[formData.account_id] ?? "";
   const selectedAccountIsLiability = isLiabilityAccountType(selectedAccountType);
   const selectedAccountIsLoan = isLoanAccountType(selectedAccountType);
+  const selectedAccountIsLoc = isLineOfCreditAccountType(selectedAccountType);
   const amountHint = selectedAccountIsLiability
     ? liabilityEntryMode === "payment"
       ? "Enter the payment as a positive amount. This reduces amount owed."
       : selectedAccountIsLoan
         ? "Enter a fee or added charge as a positive amount. This increases amount owed."
-        : "Enter the charge as a positive amount. This increases amount owed."
+        : "Enter the charge/draw as a positive amount. This increases amount owed."
     : getMoneyFieldHint("transactions", "amount", {
         isTransfer: false,
         categoryType: selectedCategoryType,
@@ -495,7 +497,9 @@ function TransactionFormPage() {
             : selectedAccountIsLiability
               ? selectedAccountIsLoan
                 ? "Choose Payment to pay down the loan, or Fee / charge for interest and fees. Enter positive amounts."
-                : "Choose Payment or Charge, then enter a positive amount."
+                : selectedAccountIsLoc
+                  ? "Choose Payment or Draw / charge. To move cash to a bank or pay a card, use Transfer."
+                  : "Choose Payment or Charge, then enter a positive amount."
               : "Use positive amounts for deposits and negative amounts for withdrawals."
         }
       />
@@ -548,7 +552,9 @@ function TransactionFormPage() {
                         {selectedAccountIsLiability
                           ? selectedAccountIsLoan
                             ? "Loans track amount owed. Use Payment to pay it down."
-                            : "Credit cards track amount owed. Use Payment or Charge below."
+                            : selectedAccountIsLoc
+                              ? "Lines of credit track amount owed. Draw cash with Transfer to a bank, or pay a card with Transfer."
+                              : "Credit cards track amount owed. Use Payment or Charge below."
                           : "The account this transaction applies to."}
                       </span>
                     </label>
@@ -585,14 +591,14 @@ function TransactionFormPage() {
                           }`}
                           onClick={() => setLiabilityEntryMode("charge")}
                         >
-                          {selectedAccountIsLoan ? "Fee / charge" : "Charge"}
+                          {selectedAccountIsLoan ? "Fee / charge" : selectedAccountIsLoc ? "Draw / charge" : "Charge"}
                           <span>Increases amount owed</span>
                         </button>
                       </div>
                     </fieldset>
                   ) : formData.account_id ? (
                     <p className="field-hint liability-entry-hint">
-                      Select a loan or credit card account above to choose Payment vs Charge.
+                      Select a loan, credit card, or line of credit above to choose Payment vs Charge.
                       To pay a loan from checking/savings, use{" "}
                       <BrowseLink to={`/app/${appName}/transfers/new`}>Transfer</BrowseLink> instead.
                     </p>
@@ -692,11 +698,17 @@ function TransactionFormPage() {
                       <div className="transfer-instead-callout">
                         <p className="subtext">
                           {selectedAccountIsLiability
-                            ? "Paying from a bank account? Use a transfer so cash and amount owed both update."
+                            ? selectedAccountIsLoc
+                              ? "Moving cash to a bank or paying a credit card? Use a transfer so both balances update correctly."
+                              : "Paying from a bank account? Use a transfer so cash and amount owed both update."
                             : "Moving money between accounts? Use the transfer form for From → To payments and advances."}
                         </p>
                         <BrowseLink className="button" to={transferPath} state={transferState}>
-                          {selectedAccountIsLiability ? "Pay with a transfer" : "Make a transfer instead"}
+                          {selectedAccountIsLoc
+                            ? "Draw with a transfer"
+                            : selectedAccountIsLiability
+                              ? "Pay with a transfer"
+                              : "Make a transfer instead"}
                         </BrowseLink>
                       </div>
                     )}

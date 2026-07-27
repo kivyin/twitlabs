@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { useParams } from "react-router-dom";
 import { getAccountJointUsers, setAccountJointUsers, syncAccountBalance } from "../api/budgetApi";
 import { deleteRows, insertRow, runQuery, selectRows, updateRows } from "../api/dbApi";
 import { getCollectionDefinition, getFieldDefinitions } from "../api/dictionaryApi";
@@ -12,6 +12,7 @@ import ConfirmModal from "../components/common/ConfirmModal";
 import FormActions from "../components/FormActions";
 import PageHeader from "../components/PageHeader";
 import { useBrowseReturn } from "../hooks/useBrowseReturn";
+import { useAccountEditTab } from "../hooks/useAccountEditTab";
 import { getRecordLabel, normalizeValue } from "../utils/tableForm";
 import {
   getMoneyFieldHint,
@@ -430,6 +431,7 @@ function TableFormPage() {
   const recordSummary = getRecordLabel(formData, pkColumn, table);
   const isAccountEdit = table === "accounts" && isEdit;
   const showAccountTransactions = isAccountEdit && relatedReady;
+  const { activeTab: accountTab, setActiveTab: setAccountTab } = useAccountEditTab();
   const accountIsLiability = isLiabilityAccountType(accountTypeName);
   const accountIsLoan = isLoanAccountType(accountTypeName);
   const accountIsSite = isSiteAccountType(accountTypeName);
@@ -569,7 +571,7 @@ function TableFormPage() {
         }
         subtitle={
           isAccountEdit
-            ? "Edit details below, then review balance trend and spending."
+            ? "Review charts, edit account details, or manage transactions."
             : isEdit
               ? "Update the fields below and save your changes."
               : "Fill in the fields below to create a record."
@@ -606,60 +608,119 @@ function TableFormPage() {
             </>
           ) : null
         }
-        actions={
-          isAccountEdit ? (
-            <Link
-              className="button-primary"
-              to={`/app/${appName}/accounts/${encodeURIComponent(String(recordId))}/register`}
-            >
-              Open register
-            </Link>
-          ) : null
-        }
       />
 
       {isAccountEdit && !loading && (
         <section className="panel account-edit-overview">
-          {!accountIsLoan &&
-            accountIsLiability &&
-            formData.credit_limit !== "" &&
-            formData.credit_limit != null && (
-              <div className="account-edit-summary">
-                <div>
-                  <span className="register-summary-label">Credit limit</span>
-                  <strong>{formatCurrency(formData.credit_limit)}</strong>
-                </div>
-              </div>
-            )}
+          {(status || error) && (
+            <div className="account-edit-messages">
+              {status && <p className="status">{status}</p>}
+              {error && <p className="error">{error}</p>}
+            </div>
+          )}
 
-          <details className="account-edit-accordion">
-            <summary>Account details</summary>
-            <form className="form account-edit-accordion-form form-shell" onSubmit={handleSubmit}>
-              <FormActions {...formActionProps}>{accountFormFields}</FormActions>
-            </form>
-          </details>
+          <div className="account-edit-tabs" role="tablist" aria-label="Account sections">
+            {[
+              { id: "charts", label: "Charts" },
+              { id: "details", label: "Details" },
+              { id: "transactions", label: "Transactions" },
+            ].map((tab) => {
+              const selected = accountTab === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  type="button"
+                  role="tab"
+                  id={`account-edit-tab-${tab.id}`}
+                  aria-selected={selected}
+                  aria-controls={`account-edit-panel-${tab.id}`}
+                  className={`account-edit-tab${selected ? " active" : ""}`}
+                  onClick={() => setAccountTab(tab.id)}
+                >
+                  {tab.label}
+                </button>
+              );
+            })}
+          </div>
 
-          <details className="account-edit-accordion">
-            <summary>Charts</summary>
-            <div className="account-edit-charts">
-              <AccountBalanceTrendChart
-                accountId={recordId}
-                accountTypeName={accountTypeName}
-                openingBalance={formData.opening_balance}
-              />
-              {shouldShowSpendingByCategoryChart(accountTypeName) && (
-                <SpendingByCategoryPieChart
+          {accountTab === "charts" && (
+            <div
+              className="account-edit-tab-panel"
+              role="tabpanel"
+              id="account-edit-panel-charts"
+              aria-labelledby="account-edit-tab-charts"
+            >
+              <div className="account-edit-charts">
+                <AccountBalanceTrendChart
                   accountId={recordId}
                   accountTypeName={accountTypeName}
-                  title="Spending by category"
+                  openingBalance={formData.opening_balance}
                 />
+                {shouldShowSpendingByCategoryChart(accountTypeName) && (
+                  <SpendingByCategoryPieChart
+                    accountId={recordId}
+                    accountTypeName={accountTypeName}
+                    title="Spending by category"
+                  />
+                )}
+              </div>
+            </div>
+          )}
+
+          {accountTab === "details" && (
+            <div
+              className="account-edit-tab-panel"
+              role="tabpanel"
+              id="account-edit-panel-details"
+              aria-labelledby="account-edit-tab-details"
+            >
+              {!accountIsLoan &&
+                accountIsLiability &&
+                formData.credit_limit !== "" &&
+                formData.credit_limit != null && (
+                  <div className="account-edit-summary">
+                    <div>
+                      <span className="register-summary-label">Credit limit</span>
+                      <strong>{formatCurrency(formData.credit_limit)}</strong>
+                    </div>
+                  </div>
+                )}
+              <form className="form account-edit-details-form form-shell" onSubmit={handleSubmit}>
+                <FormActions
+                  {...formActionProps}
+                  variant="section-head"
+                  heading="Account details"
+                  subtitle="Update the fields below and save your changes."
+                  submitLabel="Update account"
+                >
+                  {accountFormFields}
+                </FormActions>
+              </form>
+            </div>
+          )}
+
+          {accountTab === "transactions" && (
+            <div
+              className="account-edit-tab-panel"
+              role="tabpanel"
+              id="account-edit-panel-transactions"
+              aria-labelledby="account-edit-tab-transactions"
+            >
+              {showAccountTransactions ? (
+                <AccountTransactionsPanel
+                  accountId={recordId}
+                  appName={appName}
+                  embedded
+                />
+              ) : (
+                <p className="subtext">Loading transactions...</p>
               )}
             </div>
-          </details>
+          )}
         </section>
       )}
 
-      {(loading || !isAccountEdit || status || error) && (
+      {(loading || !isAccountEdit) && (
         <section className="panel">
           {loading && <p className="subtext">Loading form...</p>}
           {!loading && !isAccountEdit && (
@@ -670,10 +731,6 @@ function TableFormPage() {
           {status && <p className="status">{status}</p>}
           {error && <p className="error">{error}</p>}
         </section>
-      )}
-
-      {showAccountTransactions && (
-        <AccountTransactionsPanel accountId={recordId} appName={appName} />
       )}
 
       {showDeleteConfirm && (

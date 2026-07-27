@@ -291,7 +291,7 @@ function TransferFormPage() {
           { label: isEdit ? "Edit transfer" : "New transfer" },
         ]}
         title={isEdit ? "Edit transfer" : "New transfer"}
-        subtitle="Move money From one account To another. Enter a positive amount — the app applies the correct signs."
+        subtitle="Move money From one account To another. Enter a positive amount — the app applies the correct signs (including line of credit draws)."
       />
 
       <section className="panel">
@@ -418,7 +418,7 @@ function TransferFormPage() {
               <input
                 value={formData.description}
                 onChange={(event) => handleChange("description", event.target.value)}
-                placeholder="Savings transfer, credit card payment, etc."
+                placeholder="Savings transfer, LOC draw, credit card payment, etc."
               />
             </label>
 

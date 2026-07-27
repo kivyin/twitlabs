@@ -10,14 +10,16 @@ const RELATED_PAGE_SIZE = 10;
  * by default, supports sorting by any column, and offers the same filter
  * builder used elsewhere in the app.
  */
-function AccountTransactionsPanel({ accountId, appName = "budget" }) {
+function AccountTransactionsPanel({ accountId, appName = "budget", embedded = false }) {
   const register = useAccountRegister({ accountId, pageSize: RELATED_PAGE_SIZE });
 
   const registerPath = `/app/${appName}/accounts/${encodeURIComponent(String(accountId))}/register`;
   const newTransactionPath = `/app/${appName}/transactions/new`;
+  const Wrapper = embedded ? "div" : "section";
+  const className = embedded ? "account-edit-transactions" : "panel related-records-panel";
 
   return (
-    <section className="panel related-records-panel">
+    <Wrapper className={className}>
       <div className="register-transactions-head">
         <div>
           <h2>Transactions</h2>
@@ -53,7 +55,7 @@ function AccountTransactionsPanel({ accountId, appName = "budget" }) {
         pageSize={RELATED_PAGE_SIZE}
         emptyMessage="No transactions for this account yet."
       />
-    </section>
+    </Wrapper>
   );
 }
 

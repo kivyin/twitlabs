@@ -14,7 +14,7 @@ export const ACCOUNT_FORM_HIDDEN_FIELDS = new Set([
 /** APR / min payment for credit cards and loans. */
 export const LIABILITY_ONLY_FIELDS = new Set(["apr", "minimum_payment"]);
 
-/** Revolving limit — credit cards only (loans use opening_balance as starting owed). */
+/** Revolving limit — credit cards and lines of credit (loans use opening_balance as starting owed). */
 export const CREDIT_CARD_ONLY_FIELDS = new Set(["credit_limit"]);
 
 /** Starting cash (banks) or starting amount owed (cards/loans). */

@@ -794,7 +794,9 @@
 }
 
 [data-theme="lcars"] .sidebar-lcars .version-status-repo,
-[data-theme="lcars"] .sidebar-lcars .version-status-release {
+[data-theme="lcars"] .sidebar-lcars .version-status-release,
+[data-theme="lcars"] .sidebar-lcars .version-status-notes,
+[data-theme="lcars"] .sidebar-lcars .version-status-refresh {
   color: #0a1020;
   text-decoration: underline;
   text-underline-offset: 2px;

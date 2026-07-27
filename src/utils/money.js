@@ -1,9 +1,11 @@
 export const CREDIT_CARD_TYPE_NAME = "Credit Card";
 export const LOAN_TYPE_NAME = "Loan";
+export const LINE_OF_CREDIT_TYPE_NAME = "Line of Credit";
 
 export const LIABILITY_ACCOUNT_TYPES = new Set([
   CREDIT_CARD_TYPE_NAME,
   LOAN_TYPE_NAME,
+  LINE_OF_CREDIT_TYPE_NAME,
 ]);
 
 export const BUDGET_MONEY_FIELDS = {
@@ -16,10 +18,24 @@ export function isMoneyField(table, fieldName) {
   return BUDGET_MONEY_FIELDS[table]?.includes(fieldName) ?? false;
 }
 
+export function isLineOfCreditAccountType(typeName = "") {
+  const normalized = String(typeName || "").trim().toLowerCase();
+  if (!normalized) return false;
+  if (typeName === LINE_OF_CREDIT_TYPE_NAME) return true;
+  return (
+    normalized === "line of credit" ||
+    normalized === "loc" ||
+    normalized.includes("line of credit") ||
+    normalized.includes("heloc") ||
+    normalized === "home equity line of credit"
+  );
+}
+
 export function isLiabilityAccountType(typeName) {
   const normalized = String(typeName || "").trim().toLowerCase();
   if (!normalized) return false;
   if (LIABILITY_ACCOUNT_TYPES.has(typeName)) return true;
+  if (isLineOfCreditAccountType(typeName)) return true;
   return (
     normalized === "loan" ||
     normalized === "credit card" ||
@@ -32,6 +48,7 @@ export function isLiabilityAccountType(typeName) {
 export function isLoanAccountType(typeName = "") {
   const normalized = String(typeName || "").trim().toLowerCase();
   if (!normalized) return false;
+  if (isLineOfCreditAccountType(typeName)) return false;
   if (typeName === LOAN_TYPE_NAME) return true;
   return normalized === "loan" || (normalized.includes("loan") && !normalized.includes("credit"));
 }
@@ -106,6 +123,10 @@ export function getTransferPartnerAmount(primaryType, sourceType, primaryAmount)
 /**
  * From→To transfer legs from a positive amount and account type names.
  * Returns signed amounts for each side plus a transfer_kind label key.
+ *
+ * Line of Credit draws:
+ * - LOC → bank: advance (+/+): owed up on LOC, cash up in bank
+ * - LOC → credit card/loan: loc_draw (+/−): owed up on LOC, owed down on destination
  */
 export function buildTransferLegAmounts(fromType, toType, absoluteAmount) {
   const abs = Math.abs(Number(absoluteAmount));
@@ -115,6 +136,26 @@ export function buildTransferLegAmounts(fromType, toType, absoluteAmount) {
 
   const fromLiability = isLiabilityAccountType(fromType);
   const toLiability = isLiabilityAccountType(toType);
+
+  // Drawing a line of credit to pay down another liability.
+  if (isLineOfCreditAccountType(fromType) && toLiability) {
+    return {
+      fromAmount: abs,
+      toAmount: -abs,
+      absoluteAmount: abs,
+      kind: "loc_draw",
+    };
+  }
+
+  // Drawing a line of credit into a bank/asset account (owed up, cash up).
+  if (isLineOfCreditAccountType(fromType) && !toLiability) {
+    return {
+      fromAmount: abs,
+      toAmount: abs,
+      absoluteAmount: abs,
+      kind: "loc_draw",
+    };
+  }
 
   if (fromLiability === toLiability) {
     return {
@@ -148,6 +189,8 @@ export function getTransferKindLabel(kind) {
       return "payment";
     case "advance":
       return "cash advance";
+    case "loc_draw":
+      return "line of credit draw";
     case "debt_move":
       return "debt move";
     case "move":
@@ -165,20 +208,56 @@ export function resolveTransferRoles(rowA, typeA, rowB, typeB) {
   const aAmount = Number(rowA.amount);
   const bAmount = Number(rowB.amount);
 
-  if (aLiability === bLiability) {
+  if (aLiability && bLiability) {
+    // LOC draw: positive on LOC (from), negative on destination (to).
+    if (aAmount > 0 && bAmount < 0 && isLineOfCreditAccountType(typeA)) {
+      return {
+        from: rowA,
+        to: rowB,
+        absoluteAmount: Math.abs(aAmount),
+        kind: "loc_draw",
+      };
+    }
+    if (bAmount > 0 && aAmount < 0 && isLineOfCreditAccountType(typeB)) {
+      return {
+        from: rowB,
+        to: rowA,
+        absoluteAmount: Math.abs(bAmount),
+        kind: "loc_draw",
+      };
+    }
+
+    // Classic debt move: negative from, positive to.
     if (aAmount < 0) {
       return {
         from: rowA,
         to: rowB,
         absoluteAmount: Math.abs(aAmount),
-        kind: aLiability ? "debt_move" : "move",
+        kind: "debt_move",
       };
     }
     return {
       from: rowB,
       to: rowA,
       absoluteAmount: Math.abs(bAmount),
-      kind: aLiability ? "debt_move" : "move",
+      kind: "debt_move",
+    };
+  }
+
+  if (aLiability === bLiability) {
+    if (aAmount < 0) {
+      return {
+        from: rowA,
+        to: rowB,
+        absoluteAmount: Math.abs(aAmount),
+        kind: "move",
+      };
+    }
+    return {
+      from: rowB,
+      to: rowA,
+      absoluteAmount: Math.abs(bAmount),
+      kind: "move",
     };
   }
 
@@ -195,10 +274,20 @@ export function resolveTransferRoles(rowA, typeA, rowB, typeB) {
 
   if (aAmount > 0 && bAmount > 0) {
     if (aLiability && !bLiability) {
-      return { from: rowA, to: rowB, absoluteAmount: Math.abs(aAmount), kind: "advance" };
+      return {
+        from: rowA,
+        to: rowB,
+        absoluteAmount: Math.abs(aAmount),
+        kind: isLineOfCreditAccountType(typeA) ? "loc_draw" : "advance",
+      };
     }
     if (!aLiability && bLiability) {
-      return { from: rowB, to: rowA, absoluteAmount: Math.abs(bAmount), kind: "advance" };
+      return {
+        from: rowB,
+        to: rowA,
+        absoluteAmount: Math.abs(bAmount),
+        kind: isLineOfCreditAccountType(typeB) ? "loc_draw" : "advance",
+      };
     }
   }
 
@@ -241,12 +330,12 @@ export function validateCategorySignedAmount(amount, categoryType, accountTypeNa
   if (liability) {
     if (normalizedType === "expense" && numeric < 0) {
       throw new Error(
-        "Charges on credit cards and loans must be positive (increases amount owed)."
+        "Charges on credit cards, loans, and lines of credit must be positive (increases amount owed)."
       );
     }
     if (normalizedType === "income" && numeric > 0) {
       throw new Error(
-        "Payments and credits on credit cards and loans must be negative (reduces amount owed)."
+        "Payments and credits on credit cards, loans, and lines of credit must be negative (reduces amount owed)."
       );
     }
     return numeric;
@@ -301,7 +390,7 @@ export function validateAccountBalance(balance, accountTypeName) {
   const numeric = parseMoneyValue(balance);
 
   if (isLiabilityAccountType(accountTypeName) && numeric < 0) {
-    throw new Error("Amount owed must be zero or positive on credit cards and loans.");
+    throw new Error("Amount owed must be zero or positive on credit cards, loans, and lines of credit.");
   }
 
   return numeric;
@@ -371,7 +460,7 @@ export function getMoneyFieldHint(table, fieldName, context = {}) {
   }
 
   if (table === "accounts" && fieldName === "credit_limit") {
-    return "Revolving credit card limit only. Available credit = limit − amount owed. Not used for loans.";
+    return "Revolving limit for credit cards and lines of credit. Available credit = limit − amount owed. Not used for loans.";
   }
 
   if (table === "accounts" && fieldName === "apr") {

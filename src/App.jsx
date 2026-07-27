@@ -40,6 +40,7 @@ import NotesRecentPage from "./pages/notes/NotesRecentPage";
 import DocsHomePage from "./pages/docs/DocsHomePage";
 import DocsAppPage from "./pages/docs/DocsAppPage";
 import DocsTopicPage from "./pages/docs/DocsTopicPage";
+import VersionsPage from "./pages/VersionsPage";
 
 // Guards access to /app/:appName/* routes based on role
 function AppAccessGuard() {
@@ -80,6 +81,7 @@ function ProtectedLayout() {
           <Route path="/docs" element={<DocsHomePage />} />
           <Route path="/docs/:appName" element={<DocsAppPage />} />
           <Route path="/docs/:appName/:topic" element={<DocsTopicPage />} />
+          <Route path="/versions" element={<VersionsPage />} />
 
           {/* Hardcoded /budget/* — guarded for budget role */}
           <Route element={<BudgetGuard />}>

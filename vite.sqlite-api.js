@@ -65,7 +65,14 @@ mkdirSync(path.dirname(dbPath), { recursive: true });
 const db = new DatabaseSync(dbPath);
 
 const GITHUB_REPO = process.env.GITHUB_REPO?.trim() || "kivyin/twitlabs";
-const VERSION_CHECK_TTL_MS = 60 * 60 * 1000;
+const VERSION_CHECK_TTL_MS = (() => {
+  const raw = process.env.VERSION_CHECK_TTL_SECONDS?.trim();
+  const seconds = raw ? Number(raw) : 300;
+  if (!Number.isFinite(seconds) || seconds < 0) {
+    return 5 * 60 * 1000;
+  }
+  return Math.floor(seconds * 1000);
+})();
 let versionCheckCache = null;
 
 function readPackageVersion() {
@@ -100,9 +107,10 @@ function compareReleaseVersions(left, right) {
   return 0;
 }
 
-async function fetchLatestGitHubRelease() {
+async function fetchLatestGitHubRelease({ force = false } = {}) {
   const now = Date.now();
   if (
+    !force &&
     versionCheckCache &&
     now - versionCheckCache.fetchedAt < VERSION_CHECK_TTL_MS &&
     versionCheckCache.ok
@@ -129,7 +137,7 @@ async function fetchLatestGitHubRelease() {
         fetchedAt: now,
         payload: {
           status: "unknown",
-          current,
+          current: normalizeReleaseVersion(current),
           latest: null,
           releaseUrl: `https://github.com/${repo}/releases`,
           releaseName: null,
@@ -143,14 +151,15 @@ async function fetchLatestGitHubRelease() {
 
     const release = await response.json();
     const latest = normalizeReleaseVersion(release.tag_name || release.name || "");
-    const updateAvailable = latest ? compareReleaseVersions(latest, current) > 0 : false;
+    const normalizedCurrent = normalizeReleaseVersion(current);
+    const updateAvailable = latest ? compareReleaseVersions(latest, normalizedCurrent) > 0 : false;
 
     versionCheckCache = {
       ok: true,
       fetchedAt: now,
       payload: {
         status: updateAvailable ? "update-available" : "up-to-date",
-        current: normalizeReleaseVersion(current),
+        current: normalizedCurrent,
         latest: latest || null,
         releaseUrl: release.html_url || `https://github.com/${repo}/releases`,
         releaseName: release.name || release.tag_name || null,
@@ -309,13 +318,16 @@ const DEFAULT_CATEGORIES = {
 
 const DEFAULT_ACCOUNT_TYPES = [
   "Credit Card",
+  "Line of Credit",
   "Loan",
   "Bank Checking",
   "Bank Savings",
   "Site account",
 ];
 
-const LIABILITY_ACCOUNT_TYPES = new Set(["Credit Card", "Loan"]);
+const LIABILITY_ACCOUNT_TYPES = new Set(["Credit Card", "Line of Credit", "Loan"]);
+const LIABILITY_ACCOUNT_TYPE_SQL = "'Credit Card', 'Line of Credit', 'Loan'";
+const LINE_OF_CREDIT_TYPE_NAME = "Line of Credit";
 
 const LEGACY_ACCOUNT_TYPE_MAP = {
   checking: "Bank Checking",
@@ -350,12 +362,28 @@ const ACCOUNT_FIELD_LABELS = {
   user_id: "Added by",
 };
 
+const isLineOfCreditAccountTypeName = (typeName) => {
+  const normalized = String(typeName || "")
+    .trim()
+    .toLowerCase();
+  if (!normalized) return false;
+  if (typeName === LINE_OF_CREDIT_TYPE_NAME) return true;
+  return (
+    normalized === "line of credit" ||
+    normalized === "loc" ||
+    normalized.includes("line of credit") ||
+    normalized.includes("heloc") ||
+    normalized === "home equity line of credit"
+  );
+};
+
 const isLiabilityAccountTypeName = (typeName) => {
   const normalized = String(typeName || "")
     .trim()
     .toLowerCase();
   if (!normalized) return false;
   if (LIABILITY_ACCOUNT_TYPES.has(typeName)) return true;
+  if (isLineOfCreditAccountTypeName(typeName)) return true;
   return (
     normalized === "loan" ||
     normalized === "credit card" ||
@@ -1061,7 +1089,7 @@ const ensureLiabilityPositiveOwedSemantics = () => {
   }
 
   const liabilityTypeIds = all(
-    `SELECT id FROM ${ACCOUNT_TYPES_TABLE} WHERE name IN ('Credit Card', 'Loan')`
+    `SELECT id FROM ${ACCOUNT_TYPES_TABLE} WHERE name IN (${LIABILITY_ACCOUNT_TYPE_SQL})`
   ).map((row) => row.id);
 
   if (!liabilityTypeIds.length) {
@@ -5272,6 +5300,24 @@ const buildTransferLegAmounts = (fromType, toType, absoluteAmount) => {
   const fromLiability = isLiabilityAccountTypeName(fromType);
   const toLiability = isLiabilityAccountTypeName(toType);
 
+  if (isLineOfCreditAccountTypeName(fromType) && toLiability) {
+    return {
+      fromAmount: abs,
+      toAmount: -abs,
+      absoluteAmount: abs,
+      kind: "loc_draw",
+    };
+  }
+
+  if (isLineOfCreditAccountTypeName(fromType) && !toLiability) {
+    return {
+      fromAmount: abs,
+      toAmount: abs,
+      absoluteAmount: abs,
+      kind: "loc_draw",
+    };
+  }
+
   if (fromLiability === toLiability) {
     return {
       fromAmount: -abs,
@@ -5305,20 +5351,54 @@ const resolveTransferRoles = (rowA, typeA, rowB, typeB) => {
   const aAmount = Number(rowA.amount);
   const bAmount = Number(rowB.amount);
 
-  if (aLiability === bLiability) {
+  if (aLiability && bLiability) {
+    if (aAmount > 0 && bAmount < 0 && isLineOfCreditAccountTypeName(typeA)) {
+      return {
+        from: rowA,
+        to: rowB,
+        absoluteAmount: Math.abs(aAmount),
+        kind: "loc_draw",
+      };
+    }
+    if (bAmount > 0 && aAmount < 0 && isLineOfCreditAccountTypeName(typeB)) {
+      return {
+        from: rowB,
+        to: rowA,
+        absoluteAmount: Math.abs(bAmount),
+        kind: "loc_draw",
+      };
+    }
+
     if (aAmount < 0) {
       return {
         from: rowA,
         to: rowB,
         absoluteAmount: Math.abs(aAmount),
-        kind: aLiability ? "debt_move" : "move",
+        kind: "debt_move",
       };
     }
     return {
       from: rowB,
       to: rowA,
       absoluteAmount: Math.abs(bAmount),
-      kind: aLiability ? "debt_move" : "move",
+      kind: "debt_move",
+    };
+  }
+
+  if (aLiability === bLiability) {
+    if (aAmount < 0) {
+      return {
+        from: rowA,
+        to: rowB,
+        absoluteAmount: Math.abs(aAmount),
+        kind: "move",
+      };
+    }
+    return {
+      from: rowB,
+      to: rowA,
+      absoluteAmount: Math.abs(bAmount),
+      kind: "move",
     };
   }
 
@@ -5333,10 +5413,20 @@ const resolveTransferRoles = (rowA, typeA, rowB, typeB) => {
 
   if (aAmount > 0 && bAmount > 0) {
     if (aLiability && !bLiability) {
-      return { from: rowA, to: rowB, absoluteAmount: Math.abs(aAmount), kind: "advance" };
+      return {
+        from: rowA,
+        to: rowB,
+        absoluteAmount: Math.abs(aAmount),
+        kind: isLineOfCreditAccountTypeName(typeA) ? "loc_draw" : "advance",
+      };
     }
     if (!aLiability && bLiability) {
-      return { from: rowB, to: rowA, absoluteAmount: Math.abs(bAmount), kind: "advance" };
+      return {
+        from: rowB,
+        to: rowA,
+        absoluteAmount: Math.abs(bAmount),
+        kind: isLineOfCreditAccountTypeName(typeB) ? "loc_draw" : "advance",
+      };
     }
   }
 
@@ -6006,13 +6096,13 @@ const getNetWorthTotals = () => {
       SELECT
         COALESCE(SUM(
           CASE
-            WHEN at.name IN ('Credit Card', 'Loan') THEN 0
+            WHEN at.name IN (${LIABILITY_ACCOUNT_TYPE_SQL}) THEN 0
             ELSE COALESCE(a.balance, 0)
           END
         ), 0) AS assets_total,
         COALESCE(SUM(
           CASE
-            WHEN at.name IN ('Credit Card', 'Loan') THEN COALESCE(a.balance, 0)
+            WHEN at.name IN (${LIABILITY_ACCOUNT_TYPE_SQL}) THEN COALESCE(a.balance, 0)
             ELSE 0
           END
         ), 0) AS liabilities_total
@@ -6181,7 +6271,7 @@ const getCashFlowForecast = (days = 90) => {
         SELECT a.id
         FROM ${ACCOUNTS_TABLE} a
         JOIN ${ACCOUNT_TYPES_TABLE} at ON at.id = a.account_type_id
-        WHERE at.name NOT IN ('Credit Card', 'Loan')
+        WHERE at.name NOT IN (${LIABILITY_ACCOUNT_TYPE_SQL})
       `
     ).map((row) => row.id)
   );
@@ -6192,7 +6282,7 @@ const getCashFlowForecast = (days = 90) => {
         SELECT COALESCE(SUM(a.balance), 0) AS total
         FROM ${ACCOUNTS_TABLE} a
         JOIN ${ACCOUNT_TYPES_TABLE} at ON at.id = a.account_type_id
-        WHERE at.name NOT IN ('Credit Card', 'Loan')
+        WHERE at.name NOT IN (${LIABILITY_ACCOUNT_TYPE_SQL})
       `
     )[0]?.total ?? 0
   );
@@ -6252,7 +6342,7 @@ const calculateDebtPayoff = ({ strategy = "avalanche", extra_payment = 0 } = {})
         COALESCE(a.minimum_payment, 0) AS minimum_payment
       FROM ${ACCOUNTS_TABLE} a
       JOIN ${ACCOUNT_TYPES_TABLE} at ON at.id = a.account_type_id
-      WHERE at.name IN ('Credit Card', 'Loan')
+      WHERE at.name IN (${LIABILITY_ACCOUNT_TYPE_SQL})
         AND COALESCE(a.balance, 0) > 0.005
       ORDER BY a.name
     `
@@ -8201,7 +8291,9 @@ export function sqliteApiPlugin() {
           }
 
           if (req.method === "GET" && requestPath === "/api/version") {
-            const result = await fetchLatestGitHubRelease();
+            const url = new URL(req.url || "/api/version", "http://localhost");
+            const force = url.searchParams.get("refresh") === "1";
+            const result = await fetchLatestGitHubRelease({ force });
             json(res, 200, result.payload);
             return;
           }

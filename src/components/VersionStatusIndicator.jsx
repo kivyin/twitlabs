@@ -1,7 +1,9 @@
+import { Link } from "react-router-dom";
 import { useAppVersionStatus } from "../hooks/useAppVersionStatus";
 
 function VersionStatusIndicator({ compact = false }) {
-  const { status, currentLabel, latestLabel, releaseUrl, repoUrl } = useAppVersionStatus();
+  const { status, currentLabel, latestLabel, releaseUrl, repoUrl, refresh } =
+    useAppVersionStatus();
 
   const title =
     status === "update-available"
@@ -40,7 +42,14 @@ function VersionStatusIndicator({ compact = false }) {
   return (
     <div className={className} title={title} aria-label={title} role="status">
       <span className="version-status-dot" aria-hidden="true" />
-      <span className="version-status-label">{label}</span>
+      <Link
+        className="version-status-label"
+        to="/versions"
+        title="Open version history"
+        aria-label={`Open version history (${title})`}
+      >
+        {label}
+      </Link>
       <a
         className="version-status-repo"
         href={repoUrl}
@@ -51,6 +60,14 @@ function VersionStatusIndicator({ compact = false }) {
       >
         {compact ? "GH" : "Repo"}
       </a>
+      <Link
+        className="version-status-notes"
+        to="/versions"
+        title="Open version history"
+        aria-label="Open version history"
+      >
+        {compact ? "Log" : "Notes"}
+      </Link>
       {status === "update-available" && releaseUrl ? (
         <a
           className="version-status-release"
@@ -63,6 +80,16 @@ function VersionStatusIndicator({ compact = false }) {
           {compact ? "↑" : "Release"}
         </a>
       ) : null}
+      <button
+        type="button"
+        className="version-status-refresh"
+        onClick={() => refresh({ force: true })}
+        disabled={status === "checking"}
+        title="Check for updates now"
+        aria-label="Check for updates now"
+      >
+        {compact ? "↻" : "Check"}
+      </button>
     </div>
   );
 }

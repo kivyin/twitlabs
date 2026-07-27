@@ -464,15 +464,24 @@ a.version-status:hover {
 
 .version-status-label {
   min-width: 0;
+  flex: 1 1 auto;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  color: inherit;
+  text-decoration: none;
+}
+
+.version-status-label:hover {
+  text-decoration: underline;
+  color: var(--text);
 }
 
 .version-status-repo,
-.version-status-release {
+.version-status-release,
+.version-status-refresh,
+.version-status-notes {
   flex-shrink: 0;
-  margin-left: auto;
   padding: 0.1rem 0.35rem;
   border-radius: 4px;
   color: var(--brand-strong, var(--brand));
@@ -482,12 +491,34 @@ a.version-status:hover {
   text-decoration: none;
 }
 
-.version-status-release {
-  margin-left: 0.2rem;
+.version-status-repo {
+  margin-left: auto;
+}
+
+.version-status-release,
+.version-status-refresh,
+.version-status-notes {
+  margin-left: 0.15rem;
+}
+
+.version-status-refresh {
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.version-status-refresh:disabled {
+  opacity: 0.55;
+  cursor: wait;
 }
 
 .version-status-repo:hover,
-.version-status-release:hover {
+.version-status-release:hover,
+.version-status-notes:hover,
+.version-status-refresh:hover:not(:disabled) {
   background: color-mix(in srgb, var(--brand) 12%, transparent);
   text-decoration: underline;
 }
@@ -503,7 +534,9 @@ a.version-status:hover {
 }
 
 .version-status.is-compact .version-status-repo,
-.version-status.is-compact .version-status-release {
+.version-status.is-compact .version-status-release,
+.version-status.is-compact .version-status-notes,
+.version-status.is-compact .version-status-refresh {
   margin-left: 0;
 }
 
@@ -681,6 +714,26 @@ a.version-status:hover {
   max-width: none;
   margin: 0 -1.5rem 0.85rem;
   border-radius: 0;
+}
+
+.shell-inner > .page-header:has(+ .account-edit-overview) {
+  margin-bottom: 0.45rem;
+}
+
+.shell-inner > .page-header:has(+ .account-edit-overview):not(.page-header-lcars) {
+  padding-top: 0.35rem;
+  padding-bottom: 0.4rem;
+}
+
+/* Full-bleed account edit workspace */
+.shell-inner > .account-edit-overview {
+  width: calc(100% + 3rem);
+  max-width: none;
+  margin: 0 -1.5rem 0.65rem;
+  border-radius: 0;
+  border-left: none;
+  border-right: none;
+  padding: 0.65rem 1.25rem 0.85rem;
 }
 
 .shell-inner > .lcars-mid-band {
@@ -2036,6 +2089,14 @@ pre {
     margin-right: -1.1rem;
   }
 
+  .shell-inner > .account-edit-overview {
+    width: calc(100% + 2.2rem);
+    margin-left: -1.1rem;
+    margin-right: -1.1rem;
+    padding-left: 1.1rem;
+    padding-right: 1.1rem;
+  }
+
   .shell-inner > .lcars-mid-band {
     width: calc(100% + 2.2rem);
     margin-left: -1.1rem;
@@ -3033,30 +3094,102 @@ input.money-negative {
 .account-edit-overview {
   display: flex;
   flex-direction: column;
-  gap: 1.25rem;
+  gap: 0.65rem;
+}
+
+.account-edit-messages {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.account-edit-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  padding-bottom: 0.45rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.account-edit-tab {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-muted, var(--surface-2));
+  color: var(--muted-text);
+  padding: 0.28rem 0.75rem;
+  font: inherit;
+  font-size: 0.86rem;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.account-edit-tab:hover {
+  color: var(--text);
+  border-color: color-mix(in srgb, var(--brand) 35%, var(--border));
+}
+
+.account-edit-tab.active {
+  color: var(--text);
+  border-color: var(--brand-strong, var(--brand));
+  background: var(--surface);
+  box-shadow: var(--shadow-xs);
+}
+
+.account-edit-tab-panel {
+  min-width: 0;
+  padding-top: 0.15rem;
 }
 
 .account-edit-summary {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-  gap: 0.85rem;
+  gap: 0.65rem;
+  margin-bottom: 0.65rem;
 }
 
 .account-edit-charts {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  gap: 1.25rem;
+  gap: 0.85rem;
   align-items: start;
-  padding-top: 0.35rem;
-  border-top: 1px solid var(--border);
+}
+
+.account-edit-details-form {
   margin-top: 0;
+}
+
+.account-edit-overview .form-section-head {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  margin-bottom: 0.75rem;
+  padding-bottom: 0.55rem;
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+.account-edit-overview .form-section-head h2 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.account-edit-overview .form-section-head .subtext {
+  margin: 0.2rem 0 0;
+}
+
+.account-edit-transactions .register-transactions-head {
+  margin-top: 0;
+  margin-bottom: 0.55rem;
+  padding-bottom: 0;
 }
 
 .account-trend-panel,
 .spending-category-pie {
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
+  gap: 0.45rem;
   min-width: 0;
 }
 
@@ -3068,7 +3201,7 @@ input.money-negative {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 0.75rem;
+  gap: 0.5rem;
   flex-wrap: wrap;
 }
 
@@ -3080,44 +3213,6 @@ input.money-negative {
 
 .account-trend-empty {
   margin: 0;
-}
-
-.account-edit-accordion {
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: var(--surface-muted, var(--surface-2));
-  padding: 2.4px 0.9rem;
-}
-
-.account-edit-accordion > summary {
-  cursor: pointer;
-  list-style: none;
-  font-weight: 650;
-  font-size: 0.95rem;
-  padding: 5px 0.15rem;
-  color: var(--text);
-  user-select: none;
-}
-
-.account-edit-accordion > summary::-webkit-details-marker {
-  display: none;
-}
-
-.account-edit-accordion > summary::before {
-  content: "▸";
-  display: inline-block;
-  width: 1rem;
-  color: var(--muted-text);
-  transition: transform 0.15s ease;
-}
-
-.account-edit-accordion[open] > summary::before {
-  transform: rotate(90deg);
-}
-
-.account-edit-accordion-form {
-  padding-top: 0.35rem;
-  border-top: 1px solid var(--border);
 }
 
 .register-actions {
@@ -6334,6 +6429,78 @@ input.money-negative {
 .doc-full-link {
   margin-top: 1.25rem;
   margin-bottom: 0;
+}
+
+/* Versions / changelog */
+.versions-summary {
+  margin-bottom: 0.85rem;
+}
+
+.versions-summary-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 0.85rem 1.25rem;
+}
+
+.versions-summary-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-left: auto;
+}
+
+.versions-timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.versions-release-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.versions-release-kicker {
+  margin: 0 0 0.2rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted-text);
+}
+
+.versions-release-head h2 {
+  margin: 0;
+  font-size: 1.15rem;
+  line-height: 1.25;
+}
+
+.versions-release.is-current {
+  border-color: color-mix(in srgb, var(--brand-strong, var(--brand)) 45%, var(--border));
+  box-shadow: var(--shadow-sm);
+}
+
+.versions-release.is-current .versions-release-kicker {
+  color: var(--brand-strong, var(--brand));
+}
+
+.versions-highlights {
+  margin: 0;
+  padding-left: 1.15rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.versions-highlights li {
+  color: var(--text);
+  line-height: 1.4;
 }
 
 .docs-app-grid {
