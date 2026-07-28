@@ -83,8 +83,11 @@ function LoginPage() {
     clearAuthMessage();
     setLoading(true);
     try {
-      const { token, user: nextUser } = await apiLogin(username, password);
-      login(token, nextUser);
+      const { token, user: nextUser, session_idle_seconds: sessionIdleSeconds } = await apiLogin(
+        username,
+        password
+      );
+      login(token, nextUser, sessionIdleSeconds);
       navigate(resolvePostLoginPath(location.state?.from), { replace: true });
     } catch (err) {
       setError(err.message);

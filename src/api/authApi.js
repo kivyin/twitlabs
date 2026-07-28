@@ -19,7 +19,10 @@ export async function getMe() {
   if (!token) return null;
   try {
     const payload = await apiRequest("/api/auth/me", { skipUnauthorizedHandler: true });
-    return payload.user ?? null;
+    return {
+      user: payload.user ?? null,
+      sessionIdleSeconds: Number(payload.session_idle_seconds) || null,
+    };
   } catch {
     return null;
   }

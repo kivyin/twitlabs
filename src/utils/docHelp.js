@@ -88,6 +88,9 @@ export function usePageHelpFromPath(pathname, params = {}) {
   if (app === "notes") {
     return { app: "notes", topic: "overview" };
   }
+  if (app === "decisions") {
+    return { app: "decisions", topic: "overview" };
+  }
 
   return null;
 }

@@ -42,7 +42,15 @@ export function normalizeVisibleNavIds(savedIds, catalogIds) {
     return catalog;
   }
   const catalogSet = new Set(catalog);
-  return savedIds.map(String).filter((id) => catalogSet.has(id));
+  const kept = savedIds.map(String).filter((id) => catalogSet.has(id));
+  const keptSet = new Set(kept);
+  // Newly seeded nav items (e.g. a new app) should appear by default.
+  for (const id of catalog) {
+    if (!keptSet.has(id)) {
+      kept.push(id);
+    }
+  }
+  return kept;
 }
 
 function orderByVisibleIds(items, visibleIdSet, visibleIds) {

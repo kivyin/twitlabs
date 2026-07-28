@@ -37,6 +37,8 @@ import TasksAppGuard from "./pages/tasks/TasksAppGuard";
 import NotesAppGuard from "./pages/notes/NotesAppGuard";
 import NotesWorkspacePage from "./pages/notes/NotesWorkspacePage";
 import NotesRecentPage from "./pages/notes/NotesRecentPage";
+import DecisionsAppGuard from "./pages/decisions/DecisionsAppGuard";
+import DecisionPickerPage from "./pages/decisions/DecisionPickerPage";
 import DocsHomePage from "./pages/docs/DocsHomePage";
 import DocsAppPage from "./pages/docs/DocsAppPage";
 import DocsTopicPage from "./pages/docs/DocsTopicPage";
@@ -108,6 +110,7 @@ function ProtectedLayout() {
             <Route path="task/:taskId" element={<TasksAppGuard><TaskDetailPage /></TasksAppGuard>} />
             <Route path="browse" element={<NotesAppGuard><NotesWorkspacePage /></NotesAppGuard>} />
             <Route path="recent" element={<NotesAppGuard><NotesRecentPage /></NotesAppGuard>} />
+            <Route path="spin" element={<DecisionsAppGuard><DecisionPickerPage /></DecisionsAppGuard>} />
             <Route path="reports" element={<ReportCenterPage />} />
             <Route path="reports/:reportKey" element={<ReportDetailPage />} />
             <Route path="accounts/:accountId/register" element={<AccountRegisterPage />} />

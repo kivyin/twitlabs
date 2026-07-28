@@ -53,7 +53,7 @@ function AdminZeroBootPage() {
         <h3>What will be removed</h3>
         <ul className="doc-bullets">
           <li>All accounts, transactions, budgets, payees, goals, recurring bills, and attachments</li>
-          <li>All tasks, projects, tags, notes, and notebooks</li>
+          <li>All tasks, projects, tags, notes, notebooks, and decision picker lists</li>
           <li>Custom dashboards and custom SQL reports</li>
           <li>Favorites, column preferences, deleted-record archives, and error logs</li>
           <li>Every user except the root <code>admin</code> account</li>
@@ -62,7 +62,7 @@ function AdminZeroBootPage() {
         <h3>What will be kept / restored</h3>
         <ul className="doc-bullets">
           <li>Root administrator user and system-admin access</li>
-          <li>Out-of-box applications (Budget, Tasks, Notes)</li>
+          <li>Out-of-box applications (Budget, Tasks, Notes, Decision Picker)</li>
           <li>Default account types and default income/expense categories</li>
           <li>Dictionary metadata and standard Administration / app navigation</li>
           <li>Built-in reports (they ship with the app, not as database rows)</li>

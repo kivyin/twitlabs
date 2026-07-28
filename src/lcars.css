@@ -383,7 +383,7 @@
   top: calc(100% + 0.45rem);
   right: 0;
   z-index: 45;
-  min-width: 8.5rem;
+  min-width: 11rem;
   padding: 0.2rem;
   border: 2px solid var(--lcars-orange);
   border-radius: 0;
@@ -391,10 +391,34 @@
   box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45);
 }
 
+[data-theme="lcars"] .lcars-mid-clock-user-menu .user-menu-section-label,
+[data-theme="lcars"] .lcars-mid-clock-user-menu .theme-preference-label {
+  color: var(--lcars-tan);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+[data-theme="lcars"] .lcars-mid-clock-user-menu .user-menu-divider {
+  background: var(--lcars-orange);
+  opacity: 0.55;
+}
+
+[data-theme="lcars"] .lcars-mid-clock-user-menu .theme-preference-select {
+  border: 1px solid var(--lcars-orange);
+  border-radius: 0;
+  background: #15192a;
+  color: var(--lcars-tan);
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
 [data-theme="lcars"] .lcars-mid-clock-user-menu .user-menu-item {
   display: flex;
   width: 100%;
   align-items: center;
+  gap: 0.4rem;
   padding: 0.45rem 0.65rem;
   border: none;
   border-radius: 0;
@@ -768,40 +792,6 @@
   background: transparent;
 }
 
-[data-theme="lcars"] .sidebar-lcars .version-status {
-  border: none;
-  border-radius: var(--lcars-nav-radius);
-  background: var(--lcars-blue);
-  color: #0a1020;
-  font-size: 0.62rem;
-  font-weight: 700;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-  padding: 0.45rem 0.4rem;
-}
-
-[data-theme="lcars"] .sidebar-lcars .version-status--update-available {
-  background: var(--lcars-orange);
-  color: #1a1000;
-}
-
-[data-theme="lcars"] .sidebar-lcars .version-status--up-to-date .version-status-dot {
-  background: #0a1020;
-}
-
-[data-theme="lcars"] .sidebar-lcars .version-status--update-available .version-status-dot {
-  background: #1a1000;
-}
-
-[data-theme="lcars"] .sidebar-lcars .version-status-repo,
-[data-theme="lcars"] .sidebar-lcars .version-status-release,
-[data-theme="lcars"] .sidebar-lcars .version-status-notes,
-[data-theme="lcars"] .sidebar-lcars .version-status-refresh {
-  color: #0a1020;
-  text-decoration: underline;
-  text-underline-offset: 2px;
-}
-
 [data-theme="lcars"] .sidebar-lcars .sidebar-user {
   justify-content: center;
   padding: 0.45rem 0.4rem;
@@ -972,7 +962,7 @@
   font-size: inherit;
 }
 
-[data-theme="lcars"] .page-actions button:not(.button-primary):not(.favorite-button):not(.help-button),
+[data-theme="lcars"] .page-actions button:not(.button-primary):not(.favorite-button):not(.help-button):not(.version-menu-trigger),
 [data-theme="lcars"] .page-actions a:not(.button-primary) {
   background: var(--lcars-lavender);
   border-color: var(--lcars-lavender);
@@ -999,6 +989,46 @@
   background: var(--lcars-peach);
   border-color: var(--lcars-peach);
   color: #1a1000;
+}
+
+[data-theme="lcars"] .page-actions .version-menu-trigger {
+  border-radius: 0;
+  border: 1px solid var(--lcars-lavender);
+  background: var(--lcars-lavender);
+  color: #0a1020;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 0.7rem;
+  height: 34px;
+}
+
+[data-theme="lcars"] .page-actions .version-menu-trigger:hover,
+[data-theme="lcars"] .page-actions .version-menu-trigger.active {
+  background: var(--lcars-peach);
+  border-color: var(--lcars-peach);
+  color: #1a1000;
+}
+
+[data-theme="lcars"] .page-actions .version-menu-popover {
+  border: 2px solid var(--lcars-orange);
+  border-radius: 0;
+  background: #0a0c14;
+}
+
+[data-theme="lcars"] .page-actions .version-menu-item {
+  border-radius: 0;
+  background: #15192a;
+  color: var(--lcars-tan);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 0.72rem;
+  font-weight: 700;
+  margin-bottom: 0.15rem;
+}
+
+[data-theme="lcars"] .page-actions .version-menu-item:hover {
+  background: var(--lcars-orange);
+  color: #1a0808;
 }
 
 [data-theme="lcars"] .page-actions .favorite-button.active {

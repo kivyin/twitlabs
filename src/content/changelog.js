@@ -4,6 +4,19 @@
  */
 export const CHANGELOG = [
   {
+    version: "1.8",
+    date: "2026-07-27",
+    title: "Decision Picker app",
+    highlights: [
+      "New Decision Picker app: add options, spin an animated wheel, and pick a random winner",
+      "Confetti celebration on selection, optional remove-winner, and re-spin",
+      "Option lists persist per user on the server across logouts",
+      "Decision Picker user role available in Administration → Users",
+      "Help docs and navigation icon for Decision Picker",
+      "Site inactivity timeout is configurable via SESSION_IDLE_SECONDS in .env",
+    ],
+  },
+  {
     version: "1.7",
     date: "2026-07-27",
     title: "Line of credit accounts & transfers",
@@ -18,7 +31,7 @@ export const CHANGELOG = [
       "Account workspace is full-bleed with tighter spacing for more usable height",
       "Details actions match the Transactions section head layout",
       "App version status checks GitHub for newer releases",
-      "Version status includes Repo link and a manual Check action",
+      "Version control lives in the page header (next to Help) as a dropdown: Repo, Notes, Check for updates",
       "Version check cache TTL is configurable via VERSION_CHECK_TTL_SECONDS",
     ],
   },

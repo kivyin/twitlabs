@@ -15,6 +15,7 @@ export const NAV_ICON_OPTIONS = [
   { value: "board", label: "Board" },
   { value: "focus", label: "Focus" },
   { value: "notes", label: "Notes" },
+  { value: "decisions", label: "Decision Picker" },
 ];
 
 export const navIcons = {
@@ -103,6 +104,13 @@ export const navIcons = {
     <>
       <path d="M14 2H6a2 2 0 0 0-2 2v16l4-2 4 2 4-2 4 2V4a2 2 0 0 0-2-2z" />
       <path d="M8 7h8M8 11h8M8 15h5" />
+    </>
+  ),
+  decisions: (
+    <>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 3v9l6 3" />
+      <circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none" />
     </>
   ),
 };

@@ -192,7 +192,7 @@ const DOC_APPS = {
         summary: "After sign-in, the home page lists every application your roles allow.",
         sections: [
           section("How it works", [
-            "Each card opens an application (Budget, Tasks, Notes, and others assigned to you).",
+            "Each card opens an application (Budget, Tasks, Notes, Decision Picker, and others assigned to you).",
             "Administrators see every registered application.",
             "Use the left sidebar to move between apps without returning home.",
             "Open Documentation from the sidebar for field-level and process help.",
@@ -225,7 +225,8 @@ const DOC_APPS = {
             "Confirm the new password, then continue to your destination.",
           ]),
           section("Sessions", [
-            "You are signed out after about five minutes of inactivity.",
+            "You are signed out after a period of inactivity (default five minutes).",
+            "Administrators configure the timeout with SESSION_IDLE_SECONDS in the server .env file (restart required).",
             "API session expiry also returns you to login with a message.",
             "Use Sign out in the shell when you are done on a shared computer.",
           ]),
@@ -248,13 +249,13 @@ const DOC_APPS = {
         summary: "Personalize how the shell looks.",
         sections: [
           section("Theme", [
-            "Use the theme control to cycle Light, Dark, System, and LCARS.",
+            "Open the account menu (your name/avatar), then use the Theme dropdown to choose Light, Dark, System, or LCARS.",
             "System follows your operating system preference.",
             "LCARS is a high-contrast command-style theme.",
-            "Theme is available on the login screen and inside the app.",
+            "On the login screen, use the theme dropdown in the corner before you sign in.",
           ]),
           section("Branding", [
-            "Open Branding to set the application name shown in the shell.",
+            "Open Branding under Applications → Administration to set the application name shown in the shell.",
             "Optional Ship name supports LCARS-style labeling.",
             "Branding appears on login and in the sidebar brand area.",
           ]),
@@ -839,6 +840,36 @@ const DOC_APPS = {
     },
   },
 
+  decisions: {
+    label: "Decision Picker",
+    description: "Spin a wheel to randomly choose from a list of options.",
+    topics: {
+      overview: {
+        title: "Decision Picker overview",
+        summary: "Add options, spin an animated wheel, celebrate the winner, and optionally remove it.",
+        sections: [
+          section("How to use", [
+            "Open Decision Picker from the workspace home or the sidebar.",
+            "Add at least two options to the list.",
+            "Click Spin — the wheel animates for a few seconds and lands on a random winner.",
+            "Confetti plays when a winner is selected.",
+            "Use Re-spin to choose again from the current list.",
+            "Optionally enable Remove winning item after spin, or remove a winner manually.",
+          ]),
+          section("Access", [
+            "Grant the Decision Picker user role under Administration → Users.",
+            "System admins can open every app, including Decision Picker.",
+          ]),
+          section("Tips", [
+            "Your option list is saved per user and persists across logouts.",
+            "Clear all removes every option from the current list.",
+            "Great for dinner spots, chore picks, movie night, or any coin-flip moment.",
+          ]),
+        ],
+      },
+    },
+  },
+
   admin: {
     label: "Administration",
     description: "Users, schema dictionary, navigation, deletes, logs, zero boot, and SQL tools.",
@@ -956,7 +987,7 @@ const DOC_APPS = {
           section("How to use", [
             "Main links appear as parents in the left navigation.",
             "Child links reference a parent and show indented underneath.",
-            "Section chooses Applications vs Administration grouping.",
+            "Section chooses Applications grouping (apps vs admin links still appear together in the sidebar Applications list).",
             "Application ties an apps-section link to a specific app.",
             "Reseed navigation when apps/tables change and you want defaults restored.",
             "Click a row to edit; delete from the form while editing.",
@@ -1021,7 +1052,7 @@ const DOC_APPS = {
           ]),
           section("What is kept or restored", [
             "Root admin user and system-admin role.",
-            "Budget, Tasks, and Notes applications.",
+            "Budget, Tasks, Notes, and Decision Picker applications.",
             "Default account types and default income/expense categories.",
             "Dictionary metadata and standard navigation.",
             "Built-in reports that ship with the product.",

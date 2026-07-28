@@ -1,9 +1,35 @@
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useAppVersionStatus } from "../hooks/useAppVersionStatus";
 
-function VersionStatusIndicator({ compact = false }) {
+/**
+ * Header version control: status trigger + dropdown (Repo, Notes, Check for updates).
+ */
+function VersionStatusIndicator({ className = "" }) {
+  const rootRef = useRef(null);
+  const [open, setOpen] = useState(false);
   const { status, currentLabel, latestLabel, releaseUrl, repoUrl, refresh } =
     useAppVersionStatus();
+
+  useEffect(() => {
+    if (!open) return undefined;
+
+    const handlePointer = (event) => {
+      if (rootRef.current && !rootRef.current.contains(event.target)) {
+        setOpen(false);
+      }
+    };
+    const handleKey = (event) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+
+    document.addEventListener("mousedown", handlePointer);
+    document.addEventListener("keydown", handleKey);
+    return () => {
+      document.removeEventListener("mousedown", handlePointer);
+      document.removeEventListener("keydown", handleKey);
+    };
+  }, [open]);
 
   const title =
     status === "update-available"
@@ -16,80 +42,85 @@ function VersionStatusIndicator({ compact = false }) {
             ? `Could not check for updates (running ${currentLabel})`
             : `Version ${currentLabel}`;
 
-  const label =
+  const triggerLabel =
     status === "update-available"
-      ? compact
-        ? latestLabel
-        : `${currentLabel} · Update ${latestLabel}`
-      : status === "up-to-date"
-        ? compact
-          ? currentLabel
-          : `${currentLabel} · Up to date`
-        : status === "checking"
-          ? compact
-            ? "…"
-            : "Checking version…"
-          : currentLabel;
+      ? `${currentLabel} ↑`
+      : status === "checking"
+        ? "…"
+        : currentLabel;
 
-  const className = [
-    "version-status",
-    `version-status--${status}`,
-    compact ? "is-compact" : "",
+  const rootClass = [
+    "version-menu",
+    `version-menu--${status}`,
+    open ? "is-open" : "",
+    className,
   ]
     .filter(Boolean)
     .join(" ");
 
   return (
-    <div className={className} title={title} aria-label={title} role="status">
-      <span className="version-status-dot" aria-hidden="true" />
-      <Link
-        className="version-status-label"
-        to="/versions"
-        title="Open version history"
-        aria-label={`Open version history (${title})`}
-      >
-        {label}
-      </Link>
-      <a
-        className="version-status-repo"
-        href={repoUrl}
-        target="_blank"
-        rel="noreferrer"
-        title="Open GitHub repository"
-        aria-label="Open GitHub repository"
-      >
-        {compact ? "GH" : "Repo"}
-      </a>
-      <Link
-        className="version-status-notes"
-        to="/versions"
-        title="Open version history"
-        aria-label="Open version history"
-      >
-        {compact ? "Log" : "Notes"}
-      </Link>
-      {status === "update-available" && releaseUrl ? (
-        <a
-          className="version-status-release"
-          href={releaseUrl}
-          target="_blank"
-          rel="noreferrer"
-          title={`Open release ${latestLabel}`}
-          aria-label={`Open release ${latestLabel}`}
-        >
-          {compact ? "↑" : "Release"}
-        </a>
-      ) : null}
+    <div className={rootClass} ref={rootRef}>
       <button
         type="button"
-        className="version-status-refresh"
-        onClick={() => refresh({ force: true })}
-        disabled={status === "checking"}
-        title="Check for updates now"
-        aria-label="Check for updates now"
+        className={`version-menu-trigger${open ? " active" : ""}`}
+        aria-label={title}
+        aria-expanded={open}
+        aria-haspopup="menu"
+        title={title}
+        onClick={() => setOpen((current) => !current)}
       >
-        {compact ? "↻" : "Check"}
+        <span className="version-status-dot" aria-hidden="true" />
+        <span className="version-menu-label">{triggerLabel}</span>
+        <span className="version-menu-caret" aria-hidden="true">
+          ▾
+        </span>
       </button>
+
+      {open ? (
+        <div className="version-menu-popover" role="menu">
+          <a
+            className="user-menu-item version-menu-item"
+            role="menuitem"
+            href={repoUrl}
+            target="_blank"
+            rel="noreferrer"
+            onClick={() => setOpen(false)}
+          >
+            Repo
+          </a>
+          <Link
+            className="user-menu-item version-menu-item"
+            role="menuitem"
+            to="/versions"
+            onClick={() => setOpen(false)}
+          >
+            Notes
+          </Link>
+          {status === "update-available" && releaseUrl ? (
+            <a
+              className="user-menu-item version-menu-item"
+              role="menuitem"
+              href={releaseUrl}
+              target="_blank"
+              rel="noreferrer"
+              onClick={() => setOpen(false)}
+            >
+              Release {latestLabel}
+            </a>
+          ) : null}
+          <button
+            type="button"
+            role="menuitem"
+            className="user-menu-item version-menu-item"
+            disabled={status === "checking"}
+            onClick={async () => {
+              await refresh({ force: true });
+            }}
+          >
+            {status === "checking" ? "Checking…" : "Check for updates"}
+          </button>
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -73,6 +73,17 @@ const VERSION_CHECK_TTL_MS = (() => {
   }
   return Math.floor(seconds * 1000);
 })();
+
+/** Site-wide inactivity timeout (client + server sessions). Default: 300 seconds (5 minutes). */
+const SESSION_IDLE_MS = (() => {
+  const raw = process.env.SESSION_IDLE_SECONDS?.trim();
+  const seconds = raw ? Number(raw) : 300;
+  if (!Number.isFinite(seconds) || seconds <= 0) {
+    return 5 * 60 * 1000;
+  }
+  return Math.floor(seconds * 1000);
+})();
+const SESSION_IDLE_SECONDS = Math.max(1, Math.round(SESSION_IDLE_MS / 1000));
 let versionCheckCache = null;
 
 function readPackageVersion() {
@@ -224,6 +235,8 @@ const NOTEBOOKS_TABLE = "notebooks";
 const NOTE_SUBJECTS_TABLE = "note_subjects";
 const NOTE_TOPICS_TABLE = "note_topics";
 const NOTES_TABLE = "notes";
+const DECISION_LISTS_TABLE = "decision_lists";
+const DECISION_ITEMS_TABLE = "decision_items";
 const SYSTEM_DELETES_TABLE = "system_deletes";
 const SYSTEM_NAVIGATION_TABLE = "system_navigation";
 const SYSTEM_LOGS_TABLE = "system_logs";
@@ -240,6 +253,7 @@ const APP_USER_ROLES = {
   budget: "budget_user",
   tasks: "task_user",
   notes: "note_user",
+  decisions: "decision_user",
 };
 
 const SHARED_LOOKUP_TABLES = new Set(["users", "applications"]);
@@ -271,6 +285,8 @@ const HIDDEN_NAV_TABLES = new Set([
   USER_FAVORITES_TABLE,
   USER_PREFERENCES_TABLE,
   ACCOUNT_JOINT_USERS_TABLE,
+  DECISION_LISTS_TABLE,
+  DECISION_ITEMS_TABLE,
 ]);
 
 const DEFAULT_ADMIN_NAV_ITEMS = [
@@ -395,7 +411,6 @@ const isLiabilityAccountTypeName = (typeName) => {
 
 // In-memory sessions: token → { user, lastSeenAt, mustChangePassword }
 const sessions = new Map();
-const SESSION_IDLE_MS = 5 * 60 * 1000;
 const LOGIN_RATE_WINDOW_MS = 15 * 60 * 1000;
 const LOGIN_RATE_MAX_ATTEMPTS = 10;
 const loginAttempts = new Map();
@@ -727,6 +742,11 @@ const ensureApplications = () => {
   run(`
     INSERT OR IGNORE INTO ${APPLICATIONS_TABLE} (name, title, description)
     VALUES ('notes', 'Notes', 'Organize notebooks, subjects, topics, and rich notes.')
+  `);
+
+  run(`
+    INSERT OR IGNORE INTO ${APPLICATIONS_TABLE} (name, title, description)
+    VALUES ('decisions', 'Decision Picker', 'Spin a wheel to randomly choose from a list of options.')
   `);
 };
 
@@ -1752,6 +1772,194 @@ const ensureNotesDictionaryLabels = () => {
   }
 };
 
+const DECISION_ITEM_COLORS = [
+  "#ef4444",
+  "#f97316",
+  "#eab308",
+  "#22c55e",
+  "#06b6d4",
+  "#3b82f6",
+  "#8b5cf6",
+  "#ec4899",
+];
+
+const ensureDecisionsSchema = () => {
+  run(`
+    CREATE TABLE IF NOT EXISTS ${DECISION_LISTS_TABLE} (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      name TEXT NOT NULL DEFAULT 'My list',
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      created_by INTEGER,
+      created_on TEXT,
+      updated_by INTEGER,
+      updated_on TEXT
+    )
+  `);
+
+  run(`
+    CREATE TABLE IF NOT EXISTS ${DECISION_ITEMS_TABLE} (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      list_id INTEGER NOT NULL REFERENCES ${DECISION_LISTS_TABLE}(id),
+      label TEXT NOT NULL,
+      color TEXT,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      created_by INTEGER,
+      created_on TEXT,
+      updated_by INTEGER,
+      updated_on TEXT
+    )
+  `);
+
+  run(`
+    CREATE INDEX IF NOT EXISTS idx_decision_lists_user
+    ON ${DECISION_LISTS_TABLE}(user_id)
+  `);
+
+  run(`
+    CREATE INDEX IF NOT EXISTS idx_decision_items_list
+    ON ${DECISION_ITEMS_TABLE}(list_id)
+  `);
+};
+
+const ensureDecisionsDictionaryLabels = () => {
+  const decisionsApp = all(
+    `SELECT id, name FROM ${APPLICATIONS_TABLE} WHERE name = 'decisions' LIMIT 1`
+  )[0];
+  if (!decisionsApp) return;
+
+  const decisionTables = [
+    [DECISION_LISTS_TABLE, "Decision Lists", 10],
+    [DECISION_ITEMS_TABLE, "Decision Items", 20],
+  ];
+
+  for (const [tableName, label, sortOrder] of decisionTables) {
+    run(
+      `
+        UPDATE ${SYSTEM_DICTIONARY_TABLE}
+        SET application = ?, application_id = ?, label = ?, sort_order = ?
+        WHERE type = 'collection' AND name = ?
+      `,
+      [decisionsApp.name, decisionsApp.id, label, sortOrder, tableName]
+    );
+    run(
+      `
+        UPDATE ${SYSTEM_DICTIONARY_TABLE}
+        SET application = ?, application_id = ?
+        WHERE type = 'field' AND "table" = ?
+      `,
+      [decisionsApp.name, decisionsApp.id, tableName]
+    );
+  }
+};
+
+const assertDecisionsAccess = (user) => {
+  if (!user) {
+    throw new Error("Unauthorized.");
+  }
+  if (!userCanAccessApp(user, "decisions")) {
+    throw new Error("You do not have access to Decision Picker.");
+  }
+};
+
+const getOrCreateDecisionList = (userId) => {
+  const existing = all(
+    `
+      SELECT * FROM ${DECISION_LISTS_TABLE}
+      WHERE user_id = ?
+      ORDER BY sort_order, id
+      LIMIT 1
+    `,
+    [userId]
+  )[0];
+  if (existing) {
+    return existing;
+  }
+
+  const result = insertAuditedRow(
+    DECISION_LISTS_TABLE,
+    {
+      user_id: userId,
+      name: "My list",
+      sort_order: 0,
+    },
+    userId
+  );
+  return all(`SELECT * FROM ${DECISION_LISTS_TABLE} WHERE id = ? LIMIT 1`, [result.lastID])[0];
+};
+
+const listDecisionItems = (listId) =>
+  all(
+    `
+      SELECT id, list_id, label, color, sort_order
+      FROM ${DECISION_ITEMS_TABLE}
+      WHERE list_id = ?
+      ORDER BY sort_order, id
+    `,
+    [listId]
+  );
+
+const getDecisionPickerState = (userId) => {
+  const list = getOrCreateDecisionList(userId);
+  return {
+    list: {
+      id: list.id,
+      name: list.name,
+    },
+    items: listDecisionItems(list.id),
+  };
+};
+
+const assertDecisionListOwner = (listId, userId) => {
+  const list = all(
+    `SELECT * FROM ${DECISION_LISTS_TABLE} WHERE id = ? AND user_id = ? LIMIT 1`,
+    [listId, userId]
+  )[0];
+  if (!list) {
+    throw new Error("Decision list not found.");
+  }
+  return list;
+};
+
+const createDecisionItem = (listId, label, userId) => {
+  assertDecisionListOwner(listId, userId);
+  const trimmed = String(label || "").trim();
+  if (!trimmed) {
+    throw new Error("Item label is required.");
+  }
+  const count =
+    all(`SELECT COUNT(*) AS count FROM ${DECISION_ITEMS_TABLE} WHERE list_id = ?`, [listId])[0]
+      ?.count ?? 0;
+  const color = DECISION_ITEM_COLORS[Number(count) % DECISION_ITEM_COLORS.length];
+  const result = insertAuditedRow(
+    DECISION_ITEMS_TABLE,
+    {
+      list_id: listId,
+      label: trimmed,
+      color,
+      sort_order: Number(count),
+    },
+    userId
+  );
+  return all(`SELECT * FROM ${DECISION_ITEMS_TABLE} WHERE id = ? LIMIT 1`, [result.lastID])[0];
+};
+
+const deleteDecisionItem = (itemId, userId) => {
+  const item = all(`SELECT * FROM ${DECISION_ITEMS_TABLE} WHERE id = ? LIMIT 1`, [itemId])[0];
+  if (!item) {
+    throw new Error("Item not found.");
+  }
+  assertDecisionListOwner(item.list_id, userId);
+  run(`DELETE FROM ${DECISION_ITEMS_TABLE} WHERE id = ?`, [itemId]);
+  return { ok: true, id: itemId };
+};
+
+const clearDecisionItems = (listId, userId) => {
+  assertDecisionListOwner(listId, userId);
+  run(`DELETE FROM ${DECISION_ITEMS_TABLE} WHERE list_id = ?`, [listId]);
+  return { ok: true };
+};
+
 const ensurePhase3DictionaryLabels = () => {
   run(
     `
@@ -2196,7 +2404,7 @@ const seedNavigation = (userId = null) => {
       {
         label: application.title,
         path: `/app/${application.name}`,
-        icon: "app",
+        icon: application.name === "decisions" ? "decisions" : "app",
         is_main: 1,
         parent_id: null,
         application: application.name,
@@ -2283,7 +2491,11 @@ const seedNavigation = (userId = null) => {
     }
 
     for (const [tableIndex, collection] of collections.entries()) {
-      if (application.name === "tasks" || application.name === "notes") {
+      if (
+        application.name === "tasks" ||
+        application.name === "notes" ||
+        application.name === "decisions"
+      ) {
         continue;
       }
 
@@ -2678,6 +2890,7 @@ ensurePhase4Schema();
 ensureTasksSchema();
 ensureNotesSchema();
 ensureNotesEditorColumns();
+ensureDecisionsSchema();
 ensureSystemDeletesSchema();
 ensureSystemLogsSchema();
 ensureNavigationSchema();
@@ -2692,6 +2905,7 @@ ensurePhase3DictionaryLabels();
 ensurePhase4DictionaryLabels();
 ensureTasksDictionaryLabels();
 ensureNotesDictionaryLabels();
+ensureDecisionsDictionaryLabels();
 ensureAuditDictionaryLabels();
 ensureAccountDictionaryLabels();
 ensureTransactionDictionaryLabels();
@@ -3810,6 +4024,10 @@ const performZeroBoot = (actingUser, { confirm } = {}) => {
     deleteAll(NOTE_SUBJECTS_TABLE);
     deleteAll(NOTEBOOKS_TABLE);
 
+    // Decision Picker
+    deleteAll(DECISION_ITEMS_TABLE);
+    deleteAll(DECISION_LISTS_TABLE);
+
     // Per-user UI state
     deleteAll(USER_FAVORITES_TABLE);
     deleteAll(USER_PREFERENCES_TABLE);
@@ -3861,6 +4079,8 @@ const performZeroBoot = (actingUser, { confirm } = {}) => {
       NOTE_TOPICS_TABLE,
       NOTE_SUBJECTS_TABLE,
       NOTEBOOKS_TABLE,
+      DECISION_ITEMS_TABLE,
+      DECISION_LISTS_TABLE,
       USER_FAVORITES_TABLE,
       USER_PREFERENCES_TABLE,
       SYSTEM_DELETES_TABLE,
@@ -3881,6 +4101,7 @@ const performZeroBoot = (actingUser, { confirm } = {}) => {
   ensurePhase4DictionaryLabels();
   ensureTasksDictionaryLabels();
   ensureNotesDictionaryLabels();
+  ensureDecisionsDictionaryLabels();
   ensureAuditDictionaryLabels();
   ensureAccountDictionaryLabels();
   ensureTransactionDictionaryLabels();
@@ -8357,6 +8578,7 @@ export function sqliteApiPlugin() {
             json(res, 200, {
               token,
               user: { ...sessionUser, must_change_password: mustChangePassword },
+              session_idle_seconds: SESSION_IDLE_SECONDS,
             });
             return;
           }
@@ -8396,6 +8618,7 @@ export function sqliteApiPlugin() {
                 must_change_password: Boolean(session.mustChangePassword),
                 ide_elevated_until: getIdeElevatedUntil(stored),
               },
+              session_idle_seconds: SESSION_IDLE_SECONDS,
             });
             return;
           }
@@ -10158,6 +10381,61 @@ export function sqliteApiPlugin() {
                     ? 403
                     : 400;
               sendApiError(res, req, statusCode, notesError, { function_name: "notesApi" });
+              return;
+            }
+          }
+
+          // ── Decision Picker endpoints ───────────────────────────────────
+          const decisionsPathname = new URL(req.url, "http://localhost").pathname;
+          if (
+            decisionsPathname === "/api/decisions" ||
+            decisionsPathname.startsWith("/api/decisions/")
+          ) {
+            const decisionsUrl = new URL(req.url, "http://localhost");
+
+            try {
+              const actingUser = getSessionUser(req);
+              assertDecisionsAccess(actingUser);
+
+              if (req.method === "GET" && decisionsUrl.pathname === "/api/decisions") {
+                json(res, 200, getDecisionPickerState(actingUser.id));
+                return;
+              }
+
+              if (req.method === "POST" && decisionsUrl.pathname === "/api/decisions/items") {
+                const body = await readBody(req);
+                const state = getDecisionPickerState(actingUser.id);
+                const item = createDecisionItem(state.list.id, body.label, actingUser.id);
+                json(res, 200, { item, ...getDecisionPickerState(actingUser.id) });
+                return;
+              }
+
+              if (
+                req.method === "DELETE" &&
+                decisionsUrl.pathname === "/api/decisions/items"
+              ) {
+                const state = getDecisionPickerState(actingUser.id);
+                clearDecisionItems(state.list.id, actingUser.id);
+                json(res, 200, getDecisionPickerState(actingUser.id));
+                return;
+              }
+
+              const itemMatch = decisionsUrl.pathname.match(/^\/api\/decisions\/items\/(\d+)$/);
+              if (req.method === "DELETE" && itemMatch) {
+                deleteDecisionItem(Number(itemMatch[1]), actingUser.id);
+                json(res, 200, getDecisionPickerState(actingUser.id));
+                return;
+              }
+            } catch (decisionsError) {
+              const statusCode =
+                decisionsError.message === "Unauthorized."
+                  ? 401
+                  : decisionsError.message.includes("access")
+                    ? 403
+                    : 400;
+              sendApiError(res, req, statusCode, decisionsError, {
+                function_name: "decisionsApi",
+              });
               return;
             }
           }

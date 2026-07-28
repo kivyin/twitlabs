@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import FavoriteButton from "./FavoriteButton";
 import HelpButton from "./docs/HelpButton";
 import UserMenuButton from "./UserMenuButton";
+import VersionStatusIndicator from "./VersionStatusIndicator";
 import { LcarsMidBand } from "./LcarsShellChrome";
 import { useAuth } from "../context/AuthContext";
 import { useBrowseStack } from "../context/BrowseStackContext";
@@ -54,6 +55,7 @@ function PageHeader({
         <FavoriteButton label={typeof title === "string" ? title : undefined} />
       )}
       {resolvedHelp && <HelpButton help={resolvedHelp} />}
+      <VersionStatusIndicator className="page-header-version-menu" />
       {!isLcars ? (
         <UserMenuButton
           className="page-header-user-menu"

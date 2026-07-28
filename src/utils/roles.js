@@ -3,12 +3,14 @@ export const APP_USER_ROLES = {
   budget: "budget_user",
   tasks: "task_user",
   notes: "note_user",
+  decisions: "decision_user",
 };
 
 export const APP_ROLE_LABELS = {
   budget_user: "Budget user",
   task_user: "Tasks user",
   note_user: "Notes user",
+  decision_user: "Decision Picker user",
 };
 
 export function getAppUserRole(appName) {

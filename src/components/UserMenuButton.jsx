@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
+import { ThemePreferenceSelect } from "./ThemeToggle";
 
 /**
- * Logged-in user control with a small submenu (Sign out).
+ * Logged-in user control with preferences (theme) and Sign out.
  */
 function UserMenuButton({ displayName = "", onSignOut, className = "", compact = false }) {
   const rootRef = useRef(null);
@@ -47,6 +48,10 @@ function UserMenuButton({ displayName = "", onSignOut, className = "", compact =
       </button>
       {open ? (
         <div className="user-menu-popover" role="menu">
+          <div className="user-menu-section" onClick={(event) => event.stopPropagation()}>
+            <ThemePreferenceSelect id="user-menu-theme-preference" />
+          </div>
+          <div className="user-menu-divider" role="separator" />
           <button
             type="button"
             role="menuitem"

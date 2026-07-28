@@ -27,8 +27,6 @@ import { AppBrandText, BrandMark } from "./AppBrand";
 import BrandSettingsModal from "./BrandSettingsModal";
 import ColumnPickerModal from "./ColumnPickerModal";
 import FavoriteEditModal from "./favorites/FavoriteEditModal";
-import ThemeToggle from "./ThemeToggle";
-import VersionStatusIndicator from "./VersionStatusIndicator";
 
 const SIDEBAR_TABS = [
   { id: "nav", label: "Nav", Icon: LayoutList },
@@ -83,6 +81,7 @@ function ChevronIcon({ expanded, size = 14 }) {
 function SidebarNavGroup({
   main,
   children,
+  actionItems = [],
   navItemClass,
   subItemClass,
   onNavigate,
@@ -95,7 +94,7 @@ function SidebarNavGroup({
   isLcars = false,
 }) {
   const childItems = children ?? [];
-  const hasChildren = childItems.length > 0;
+  const hasChildren = childItems.length > 0 || actionItems.length > 0;
   const expanded = forceExpanded || groupExpanded;
   // LCARS keeps a fixed-width rail, so children stay available when the group is open.
   const showChildren = hasChildren && expanded && (sidebarExpanded || isLcars || forceExpanded);
@@ -154,6 +153,29 @@ function SidebarNavGroup({
             <Icon path={getNavIcon(child.icon, "tables")} size={16} />
             <span className="sidebar-label">{child.label}</span>
           </NavLink>
+        ))}
+
+      {showChildren &&
+        actionItems.map((action, actionIndex) => (
+          <button
+            key={action.id}
+            type="button"
+            className="sidebar-link sidebar-sublink sidebar-action-link"
+            onClick={() => {
+              action.onClick?.();
+              onNavigate?.();
+            }}
+            title={compact ? action.label : undefined}
+            aria-label={compact ? action.label : undefined}
+            style={
+              isLcars && lcarsPalette
+                ? getLcarsLinkStyle(lcarsPalette, childItems.length + actionIndex + 1)
+                : undefined
+            }
+          >
+            <Icon path={action.icon} size={16} />
+            <span className="sidebar-label">{action.label}</span>
+          </button>
         ))}
     </div>
   );
@@ -287,7 +309,6 @@ function Sidebar({
           >
             <ListOrdered size={16} aria-hidden="true" />
           </button>
-          <ThemeToggle className="sidebar-control theme-toggle-sidebar" compactLabel />
         </div>
       </div>
 
@@ -365,7 +386,7 @@ function Sidebar({
               <span className="sidebar-label">Documentation</span>
             </NavLink>
 
-            {appMains.length > 0 && (
+            {(appMains.length > 0 || (isAdmin && adminMains.length > 0)) && (
               <>
                 <p className="sidebar-section">Applications</p>
                 {appMains.map((main, index) => (
@@ -384,28 +405,42 @@ function Sidebar({
                     lcarsPalette={isLcars ? getLcarsNavPalette(index) : null}
                   />
                 ))}
-              </>
-            )}
-
-            {isAdmin && adminMains.length > 0 && (
-              <>
-                <p className="sidebar-section">Administration</p>
-                {adminMains.map((main, index) => (
-                  <SidebarNavGroup
-                    key={main.id}
-                    main={main}
-                    children={childrenByParent.get(main.id)}
-                    navItemClass={navItemClass}
-                    subItemClass={subItemClass}
-                    onNavigate={onNavigate}
-                    sidebarExpanded={isExpanded}
-                    compact={compact}
-                    groupExpanded={!isNavGroupCollapsed(main.id)}
-                    onToggleGroup={() => toggleNavGroup(main.id)}
-                    isLcars={isLcars}
-                    lcarsPalette={isLcars ? getLcarsNavPalette(appMains.length + index) : null}
-                  />
-                ))}
+                {isAdmin &&
+                  adminMains.map((main, index) => (
+                    <SidebarNavGroup
+                      key={main.id}
+                      main={main}
+                      children={childrenByParent.get(main.id)}
+                      actionItems={
+                        String(main.path || "") === "/admin"
+                          ? [
+                              {
+                                id: "branding",
+                                label: "Branding",
+                                icon: (
+                                  <>
+                                    <circle cx="12" cy="12" r="3" />
+                                    <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" />
+                                  </>
+                                ),
+                                onClick: () => setBrandSettingsOpen(true),
+                              },
+                            ]
+                          : []
+                      }
+                      navItemClass={navItemClass}
+                      subItemClass={subItemClass}
+                      onNavigate={onNavigate}
+                      sidebarExpanded={isExpanded}
+                      compact={compact}
+                      groupExpanded={!isNavGroupCollapsed(main.id)}
+                      onToggleGroup={() => toggleNavGroup(main.id)}
+                      isLcars={isLcars}
+                      lcarsPalette={
+                        isLcars ? getLcarsNavPalette(appMains.length + index) : null
+                      }
+                    />
+                  ))}
               </>
             )}
           </>
@@ -505,28 +540,6 @@ function Sidebar({
           </>
         )}
       </nav>
-
-      <div className="sidebar-foot">
-        <VersionStatusIndicator compact={compact && !isLcars} />
-        <button
-          type="button"
-          className="brand-settings-button"
-          onClick={() => setBrandSettingsOpen(true)}
-          title={compact ? "Branding" : undefined}
-          aria-label={compact ? "Branding" : undefined}
-        >
-          <Icon
-            path={
-              <>
-                <circle cx="12" cy="12" r="3" />
-                <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" />
-              </>
-            }
-            size={16}
-          />
-          <span className="sidebar-label">Branding</span>
-        </button>
-      </div>
     </aside>
 
     <BrandSettingsModal open={brandSettingsOpen} onClose={() => setBrandSettingsOpen(false)} />

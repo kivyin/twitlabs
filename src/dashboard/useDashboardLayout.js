@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   createDashboard,
   deleteDashboard,
@@ -42,6 +42,10 @@ function readActiveId(application) {
   return raw ? Number(raw) : null;
 }
 
+function sameDashboardId(left, right) {
+  return Number(left) === Number(right);
+}
+
 /**
  * Server-backed multi-dashboard state. On first use, migrates the old
  * localStorage layout (or the app default) into a "Main" dashboard.
@@ -51,6 +55,8 @@ export function useDashboards(application) {
   const [activeId, setActiveIdState] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const dashboardsRef = useRef(dashboards);
+  dashboardsRef.current = dashboards;
 
   useEffect(() => {
     let active = true;
@@ -87,10 +93,11 @@ export function useDashboards(application) {
         }
 
         setDashboards(list);
+        dashboardsRef.current = list;
 
         const stored = readActiveId(application);
         const preferred =
-          list.find((dashboard) => dashboard.id === stored) ??
+          list.find((dashboard) => sameDashboardId(dashboard.id, stored)) ??
           list.find((dashboard) => Number(dashboard.is_default) === 1) ??
           list[0];
         setActiveIdState(preferred?.id ?? null);
@@ -116,24 +123,31 @@ export function useDashboards(application) {
   );
 
   const activeDashboard =
-    dashboards.find((dashboard) => dashboard.id === activeId) ?? dashboards[0] ?? null;
+    dashboards.find((dashboard) => sameDashboardId(dashboard.id, activeId)) ??
+    dashboards[0] ??
+    null;
   const layout = activeDashboard?.items ?? [];
 
   const updateItems = useCallback((dashboardId, updater) => {
-    let nextItems = null;
-    setDashboards((current) =>
-      current.map((dashboard) => {
-        if (dashboard.id !== dashboardId) return dashboard;
-        nextItems = updater(dashboard.items ?? []);
-        return { ...dashboard, items: nextItems };
-      })
-    );
-    if (nextItems) {
-      return saveDashboardLayout(dashboardId, nextItems).catch((saveError) => {
-        setError(saveError.message || "Unable to save dashboard layout.");
-      });
+    const current = dashboardsRef.current;
+    const target = current.find((dashboard) => sameDashboardId(dashboard.id, dashboardId));
+    if (!target) {
+      return Promise.resolve();
     }
-    return Promise.resolve();
+
+    const nextItems = updater(target.items ?? []);
+    const nextDashboards = current.map((dashboard) =>
+      sameDashboardId(dashboard.id, dashboardId)
+        ? { ...dashboard, items: nextItems }
+        : dashboard
+    );
+
+    dashboardsRef.current = nextDashboards;
+    setDashboards(nextDashboards);
+
+    return saveDashboardLayout(dashboardId, nextItems).catch((saveError) => {
+      setError(saveError.message || "Unable to save dashboard layout.");
+    });
   }, []);
 
   const addReport = useCallback(
@@ -188,7 +202,11 @@ export function useDashboards(application) {
     async (name) => {
       const created = await createDashboard({ application, name, items: [] });
       if (created) {
-        setDashboards((current) => [...current, created]);
+        setDashboards((current) => {
+          const next = [...current, created];
+          dashboardsRef.current = next;
+          return next;
+        });
         setActiveId(created.id);
       }
       return created;
@@ -198,27 +216,34 @@ export function useDashboards(application) {
 
   const renameDashboard = useCallback(async (id, name) => {
     await updateDashboard(id, { name });
-    setDashboards((current) =>
-      current.map((dashboard) => (dashboard.id === id ? { ...dashboard, name } : dashboard))
-    );
+    setDashboards((current) => {
+      const next = current.map((dashboard) =>
+        sameDashboardId(dashboard.id, id) ? { ...dashboard, name } : dashboard
+      );
+      dashboardsRef.current = next;
+      return next;
+    });
   }, []);
 
   const setDefaultDashboard = useCallback(async (id) => {
     await updateDashboard(id, { is_default: 1 });
-    setDashboards((current) =>
-      current.map((dashboard) => ({
+    setDashboards((current) => {
+      const next = current.map((dashboard) => ({
         ...dashboard,
-        is_default: dashboard.id === id ? 1 : 0,
-      }))
-    );
+        is_default: sameDashboardId(dashboard.id, id) ? 1 : 0,
+      }));
+      dashboardsRef.current = next;
+      return next;
+    });
   }, []);
 
   const removeDashboard = useCallback(
     async (id) => {
       await deleteDashboard(id);
       setDashboards((current) => {
-        const next = current.filter((dashboard) => dashboard.id !== id);
-        if (activeId === id && next.length > 0) {
+        const next = current.filter((dashboard) => !sameDashboardId(dashboard.id, id));
+        dashboardsRef.current = next;
+        if (sameDashboardId(activeId, id) && next.length > 0) {
           setActiveId(next[0].id);
         }
         return next;

@@ -1,4 +1,5 @@
 import { useTheme } from "../context/ThemeContext";
+import { THEME_OPTIONS, getThemeLabel } from "../utils/theme";
 
 function Icon({ children, size = 16 }) {
   return (
@@ -62,21 +63,41 @@ function ThemeIcon({ preference, resolvedTheme }) {
   );
 }
 
-function ThemeToggle({ className = "theme-toggle", compactLabel = false }) {
-  const { preference, resolvedTheme, themeLabel, cycleTheme } = useTheme();
-  const title = `Theme: ${themeLabel}. Click to switch.`;
+/** Theme preference dropdown (user menu and auth). */
+export function ThemePreferenceSelect({ id = "theme-preference", className = "" }) {
+  const { preference, setPreference } = useTheme();
 
   return (
-    <button
-      type="button"
-      className={className}
-      onClick={cycleTheme}
-      aria-label={title}
-      title={title}
-    >
+    <label className={`theme-preference-field${className ? ` ${className}` : ""}`} htmlFor={id}>
+      <span className="theme-preference-label">Theme</span>
+      <select
+        id={id}
+        className="theme-preference-select"
+        value={preference}
+        onChange={(event) => setPreference(event.target.value)}
+        aria-label="Theme"
+      >
+        {THEME_OPTIONS.map((option) => (
+          <option key={option} value={option}>
+            {getThemeLabel(option)}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+/**
+ * Standalone theme control for login / surfaces without a user menu.
+ */
+function ThemeToggle({ className = "theme-toggle" }) {
+  const { preference, resolvedTheme } = useTheme();
+
+  return (
+    <div className={`theme-toggle-menu${className ? ` ${className}` : ""}`}>
       <ThemeIcon preference={preference} resolvedTheme={resolvedTheme} />
-      {!compactLabel && <span className="theme-toggle-label">{themeLabel}</span>}
-    </button>
+      <ThemePreferenceSelect id="auth-theme-preference" className="theme-preference-field--inline" />
+    </div>
   );
 }
 
