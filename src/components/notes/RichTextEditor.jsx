@@ -1,4 +1,5 @@
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useState } from "react";
+import { Extension } from "@tiptap/core";
 import { EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Underline from "@tiptap/extension-underline";
@@ -22,6 +23,54 @@ import Typography from "@tiptap/extension-typography";
 import NotesUrlModal from "./NotesUrlModal";
 import { toolbarIcons } from "./tiptapToolbarIcons";
 
+const INDENT = "\u00a0\u00a0\u00a0\u00a0";
+
+/** Tab indents text; in lists nests/unnests items. Always consumes Tab so focus stays in the editor. */
+const TabIndent = Extension.create({
+  name: "tabIndent",
+  priority: 1010,
+  addKeyboardShortcuts() {
+    return {
+      Tab: ({ editor }) => {
+        if (editor.isActive("listItem")) {
+          editor.commands.sinkListItem("listItem");
+          return true;
+        }
+        if (editor.isActive("taskItem")) {
+          editor.commands.sinkListItem("taskItem");
+          return true;
+        }
+        return editor.commands.insertContent(INDENT);
+      },
+      "Shift-Tab": ({ editor }) => {
+        if (editor.isActive("listItem")) {
+          editor.commands.liftListItem("listItem");
+          return true;
+        }
+        if (editor.isActive("taskItem")) {
+          editor.commands.liftListItem("taskItem");
+          return true;
+        }
+
+        const { state } = editor;
+        if (!state.selection.empty) {
+          return true;
+        }
+
+        const { $from } = state.selection;
+        const textBefore = $from.parent.textBetween(0, $from.parentOffset, undefined, "\ufffc");
+        const match = textBefore.match(/(?:\u00a0| ){1,4}$/);
+        if (match) {
+          editor.commands.deleteRange({
+            from: $from.pos - match[0].length,
+            to: $from.pos,
+          });
+        }
+        return true;
+      },
+    };
+  },
+});
 const TEXT_COLORS = [
   { label: "Default", value: "" },
   { label: "Black", value: "#111827" },
@@ -133,7 +182,11 @@ const RichTextEditor = forwardRef(function RichTextEditor(
       StarterKit.configure({
         heading: { levels: [1, 2, 3, 4] },
         codeBlock: { HTMLAttributes: { class: "tiptap-code-block" } },
+        // Configured separately below with custom options.
+        link: false,
+        underline: false,
       }),
+      TabIndent,
       Underline,
       TextStyle,
       FontSize,

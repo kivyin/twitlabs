@@ -43,6 +43,7 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true);
   const [authMessage, setAuthMessage] = useState("");
   const [sessionIdleMs, setSessionIdleMs] = useState(DEFAULT_SESSION_IDLE_MS);
+  const [isLocalNetwork, setIsLocalNetwork] = useState(false);
   const idleTimerRef = useRef(null);
   const lastBumpRef = useRef(0);
   const sessionIdleMsRef = useRef(DEFAULT_SESSION_IDLE_MS);
@@ -87,6 +88,7 @@ export function AuthProvider({ children }) {
         if (payload.sessionIdleSeconds != null) {
           applySessionIdleSeconds(payload.sessionIdleSeconds);
         }
+        setIsLocalNetwork(Boolean(payload.isLocalNetwork));
         setUser(payload.user);
       })
       .catch(() => clearToken())
@@ -126,11 +128,12 @@ export function AuthProvider({ children }) {
   }, [bumpIdle, user, sessionIdleMs]);
 
   const login = useCallback(
-    (token, userData, sessionIdleSeconds = null) => {
+    (token, userData, sessionIdleSeconds = null, localNetwork = false) => {
       setToken(token);
       if (sessionIdleSeconds != null) {
         applySessionIdleSeconds(sessionIdleSeconds);
       }
+      setIsLocalNetwork(Boolean(localNetwork));
       setUser(userData);
       setAuthMessage("");
     },
@@ -161,6 +164,8 @@ export function AuthProvider({ children }) {
       loading,
       authMessage,
       sessionIdleMs,
+      isLocalNetwork,
+      setIsLocalNetwork,
       login,
       logout,
       clearMustChangePassword,
@@ -173,6 +178,7 @@ export function AuthProvider({ children }) {
       loading,
       authMessage,
       sessionIdleMs,
+      isLocalNetwork,
       login,
       logout,
       clearMustChangePassword,

@@ -254,6 +254,7 @@ const APP_USER_ROLES = {
   tasks: "task_user",
   notes: "note_user",
   decisions: "decision_user",
+  "site-tracker": "site_tracker_user",
 };
 
 const SHARED_LOOKUP_TABLES = new Set(["users", "applications"]);
@@ -453,6 +454,71 @@ const getClientIp = (req) =>
     .trim() ||
   req.socket?.remoteAddress ||
   "unknown";
+
+/** Loopback, RFC1918 private, and link-local addresses count as on-LAN. */
+const isPrivateOrLocalIp = (ip) => {
+  const raw = String(ip || "")
+    .replace(/^::ffff:/i, "")
+    .trim()
+    .toLowerCase();
+  if (!raw || raw === "unknown") {
+    return false;
+  }
+  if (raw === "127.0.0.1" || raw === "::1" || raw === "localhost") {
+    return true;
+  }
+  if (/^10\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(raw)) {
+    return true;
+  }
+  if (/^192\.168\.\d{1,3}\.\d{1,3}$/.test(raw)) {
+    return true;
+  }
+  if (/^172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3}$/.test(raw)) {
+    return true;
+  }
+  if (/^169\.254\.\d{1,3}\.\d{1,3}$/.test(raw)) {
+    return true;
+  }
+  if (raw.startsWith("fe80:")) {
+    return true;
+  }
+  // Unique local IPv6 (fc00::/7)
+  if (/^f[cd][0-9a-f]*:/i.test(raw)) {
+    return true;
+  }
+  return false;
+};
+
+const isLocalNetworkClient = (req) => isPrivateOrLocalIp(getClientIp(req));
+
+const redactAccountSecretsInRows = (table, rows, { allowSecrets = false } = {}) => {
+  if (allowSecrets || table !== ACCOUNTS_TABLE || !Array.isArray(rows)) {
+    return rows;
+  }
+  return rows.map((row) => {
+    if (!row || !Object.prototype.hasOwnProperty.call(row, "site_password")) {
+      return row;
+    }
+    return {
+      ...row,
+      site_password: "",
+      site_password_redacted: 1,
+    };
+  });
+};
+
+/** Remote clients may set a new password, but empty values must not wipe the stored secret. */
+const scrubAccountSecretWrites = (table, data, { allowSecrets = false } = {}) => {
+  if (allowSecrets || table !== ACCOUNTS_TABLE || !data || typeof data !== "object") {
+    return data;
+  }
+  const next = { ...data };
+  if (next.site_password === "" || next.site_password == null) {
+    delete next.site_password;
+  }
+  delete next.site_password_redacted;
+  return next;
+};
 
 const assertLoginNotRateLimited = (req) => {
   const ip = getClientIp(req);
@@ -747,6 +813,11 @@ const ensureApplications = () => {
   run(`
     INSERT OR IGNORE INTO ${APPLICATIONS_TABLE} (name, title, description)
     VALUES ('decisions', 'Decision Picker', 'Spin a wheel to randomly choose from a list of options.')
+  `);
+
+  run(`
+    INSERT OR IGNORE INTO ${APPLICATIONS_TABLE} (name, title, description)
+    VALUES ('site-tracker', 'Site Tracker', 'Track website logins and site accounts.')
   `);
 };
 
@@ -2404,7 +2475,12 @@ const seedNavigation = (userId = null) => {
       {
         label: application.title,
         path: `/app/${application.name}`,
-        icon: application.name === "decisions" ? "decisions" : "app",
+        icon:
+          application.name === "decisions"
+            ? "decisions"
+            : application.name === "site-tracker"
+              ? "site-tracker"
+              : "app",
         is_main: 1,
         parent_id: null,
         application: application.name,
@@ -2490,11 +2566,28 @@ const seedNavigation = (userId = null) => {
       }
     }
 
+    if (application.name === "site-tracker") {
+      upsertNavigationItem(
+        {
+          label: "Site Accounts",
+          path: `/app/site-tracker/accounts`,
+          icon: "tables",
+          is_main: 0,
+          parent_id: appMainId,
+          application: application.name,
+          nav_section: "apps",
+          sort_order: (appIndex + 1) * 100 + 1,
+        },
+        userId
+      );
+    }
+
     for (const [tableIndex, collection] of collections.entries()) {
       if (
         application.name === "tasks" ||
         application.name === "notes" ||
-        application.name === "decisions"
+        application.name === "decisions" ||
+        application.name === "site-tracker"
       ) {
         continue;
       }
@@ -3357,6 +3450,19 @@ const assertUserCanAccessTable = (user, tableName, { forWrite = false } = {}) =>
     return;
   }
 
+  // Site Tracker reuses the shared accounts table (and its type lookup).
+  if (tableName === ACCOUNTS_TABLE || tableName === ACCOUNT_TYPES_TABLE) {
+    const canBudget = userCanAccessApp(user, "budget");
+    const canSiteTracker = userCanAccessApp(user, "site-tracker");
+    if (!canBudget && !canSiteTracker) {
+      throw new Error("You do not have access to accounts.");
+    }
+    if (tableName === ACCOUNT_TYPES_TABLE && forWrite && !canBudget) {
+      throw new Error("Budget access is required to change account types.");
+    }
+    return;
+  }
+
   if (
     SYSTEM_TABLES.has(tableName) ||
     tableName === USER_ROLES_TABLE ||
@@ -3424,7 +3530,7 @@ const requireAdmin = (req, res) => {
   return user;
 };
 
-const queryDb = ({ sql, params = [], table }) => {
+const queryDb = ({ sql, params = [], table }, { allowSecrets = false } = {}) => {
   if (!sql || typeof sql !== "string") {
     throw new Error("sql is required.");
   }
@@ -3444,7 +3550,18 @@ const queryDb = ({ sql, params = [], table }) => {
     throw new Error("Only read-only SQL (SELECT, WITH, PRAGMA) is allowed.");
   }
 
-  return { rows: all(sql, params) };
+  const rows = all(sql, params);
+  const looksLikeAccounts =
+    table === ACCOUNTS_TABLE ||
+    /\bfrom\s+accounts\b/i.test(sql) ||
+    /\bjoin\s+accounts\b/i.test(sql);
+
+  return {
+    rows: looksLikeAccounts
+      ? redactAccountSecretsInRows(ACCOUNTS_TABLE, rows, { allowSecrets })
+      : rows,
+    is_local_network: allowSecrets,
+  };
 };
 
 const ELEVATED_IDE_STATEMENTS = new Set([
@@ -3456,7 +3573,7 @@ const ELEVATED_IDE_STATEMENTS = new Set([
   "DELETE",
 ]);
 
-const executeElevatedIdeSql = ({ sql, params = [] }, user = null) => {
+const executeElevatedIdeSql = ({ sql, params = [] }, user = null, options = {}) => {
   if (!sql || typeof sql !== "string") {
     throw new Error("sql is required.");
   }
@@ -3477,7 +3594,10 @@ const executeElevatedIdeSql = ({ sql, params = [] }, user = null) => {
 
   let result;
   if (isRead) {
-    const rows = all(sql, params);
+    let rows = all(sql, params);
+    if (!options.allowSecrets) {
+      rows = redactAccountSecretsInRows(ACCOUNTS_TABLE, rows, { allowSecrets: false });
+    }
     result = {
       rows,
       changes: 0,
@@ -3633,7 +3753,7 @@ const getReferenceLabelMaps = (refs, user) => {
   return { maps };
 };
 
-const crudDb = (payload, userId = null) => {
+const crudDb = (payload, userId = null, { allowSecrets = false } = {}) => {
   const {
     action,
     table,
@@ -3654,6 +3774,7 @@ const crudDb = (payload, userId = null) => {
 
   assertValidTable(table);
   const safeTable = quoteIdentifier(table);
+  const writeData = scrubAccountSecretWrites(table, data, { allowSecrets });
 
   const safeColumns =
     columns.length === 1 && columns[0] === "*"
@@ -3693,25 +3814,29 @@ const crudDb = (payload, userId = null) => {
         Number.isInteger(limit) && limit > 0 ? ` LIMIT ${limit}` : "";
       const offsetClause =
         Number.isInteger(offset) && offset >= 0 ? ` OFFSET ${offset}` : "";
-      const rows = all(
-        `SELECT ${safeColumns} FROM ${safeTable}${whereClause}${orderClause}${limitClause}${offsetClause}`,
-        whereParams
+      const rows = redactAccountSecretsInRows(
+        table,
+        all(
+          `SELECT ${safeColumns} FROM ${safeTable}${whereClause}${orderClause}${limitClause}${offsetClause}`,
+          whereParams
+        ),
+        { allowSecrets }
       );
 
       if (!countTotal) {
-        return { rows };
+        return { rows, is_local_network: allowSecrets };
       }
 
       const total =
         all(`SELECT COUNT(*) AS total FROM ${safeTable}${whereClause}`, whereParams)[0]
           ?.total ?? 0;
 
-      return { rows, total };
+      return { rows, total, is_local_network: allowSecrets };
     }
     case "insert":
-      return insertAuditedRow(table, data, userId);
+      return insertAuditedRow(table, writeData, userId);
     case "update":
-      return updateAuditedRow(table, data, where, whereParams, userId);
+      return updateAuditedRow(table, writeData, where, whereParams, userId);
     case "delete":
       return archiveAndDeleteRows(table, where, whereParams, userId);
     case "clear":
@@ -6329,6 +6454,7 @@ const getNetWorthTotals = () => {
         ), 0) AS liabilities_total
       FROM ${ACCOUNTS_TABLE} a
       JOIN ${ACCOUNT_TYPES_TABLE} at ON at.id = a.account_type_id
+      WHERE at.name != '${SITE_ACCOUNT_TYPE_NAME}'
     `
   )[0];
 
@@ -7173,6 +7299,16 @@ const assertBudgetAccess = (user) => {
   if (!userCanAccessApp(user, "budget")) {
     throw new Error("You do not have access to Budget.");
   }
+};
+
+const assertAccountsAccess = (user) => {
+  if (!user) {
+    throw new Error("Unauthorized.");
+  }
+  if (userCanAccessApp(user, "budget") || userCanAccessApp(user, "site-tracker")) {
+    return;
+  }
+  throw new Error("You do not have access to accounts.");
 };
 
 const getTaskTagsForTaskIds = (taskIds) => {
@@ -8579,6 +8715,7 @@ export function sqliteApiPlugin() {
               token,
               user: { ...sessionUser, must_change_password: mustChangePassword },
               session_idle_seconds: SESSION_IDLE_SECONDS,
+              is_local_network: isLocalNetworkClient(req),
             });
             return;
           }
@@ -8619,6 +8756,7 @@ export function sqliteApiPlugin() {
                 ide_elevated_until: getIdeElevatedUntil(stored),
               },
               session_idle_seconds: SESSION_IDLE_SECONDS,
+              is_local_network: isLocalNetworkClient(req),
             });
             return;
           }
@@ -8787,23 +8925,25 @@ export function sqliteApiPlugin() {
           if (req.method === "POST" && requestPath === "/api/db/query") {
             const user = getSessionUser(req);
             const body = await readBody(req);
+            const allowSecrets = isLocalNetworkClient(req);
             if (body.table) {
               assertUserCanAccessTable(user, body.table, { forWrite: false });
             } else if (!isSessionAdmin(user)) {
               json(res, 403, { error: "Admin access required for ad-hoc queries." });
               return;
             }
-            json(res, 200, queryDb(body));
+            json(res, 200, queryDb(body, { allowSecrets }));
             return;
           }
 
           if (req.method === "POST" && requestPath === "/api/db/crud") {
             const body = await readBody(req);
             const user = getSessionUser(req);
+            const allowSecrets = isLocalNetworkClient(req);
             assertUserCanAccessTable(user, body.table, {
               forWrite: body.action !== "select",
             });
-            json(res, 200, crudDb(body, user?.id));
+            json(res, 200, crudDb(body, user?.id, { allowSecrets }));
             return;
           }
 
@@ -8971,7 +9111,13 @@ export function sqliteApiPlugin() {
 
             const body = await readBody(req);
             try {
-              json(res, 200, executeElevatedIdeSql(body, actingUser));
+              json(
+                res,
+                200,
+                executeElevatedIdeSql(body, actingUser, {
+                  allowSecrets: isLocalNetworkClient(req),
+                })
+              );
             } catch (ideSqlError) {
               logRequestError(req, ideSqlError, {
                 function_name: "executeElevatedIdeSql",
@@ -9573,8 +9719,17 @@ export function sqliteApiPlugin() {
           // ── Budget endpoints ────────────────────────────────────────────
           if (req.url.startsWith("/api/budget/")) {
             const actingUser = getSessionUser(req);
-            assertBudgetAccess(actingUser);
             const budgetUrl = new URL(req.url, "http://localhost");
+            const isSharedAccountPath =
+              budgetUrl.pathname === "/api/budget/accounts/reorder" ||
+              /^\/api\/budget\/accounts\/\d+\/(image|joint-users|register|sync-balance)$/.test(
+                budgetUrl.pathname
+              );
+            if (isSharedAccountPath) {
+              assertAccountsAccess(actingUser);
+            } else {
+              assertBudgetAccess(actingUser);
+            }
 
             if (req.method === "GET" && budgetUrl.pathname === "/api/budget/budget-vs-actual") {
               const month = budgetUrl.searchParams.get("month")?.trim() || new Date().toISOString().slice(0, 7);

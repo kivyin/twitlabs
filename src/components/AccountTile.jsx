@@ -24,6 +24,8 @@ function AccountTile({
   onDragEnd,
   isDragging = false,
   isDropTarget = false,
+  showBalance = true,
+  showRegister = true,
 }) {
   const [imageUrl, setImageUrl] = useState("");
   const [imageFit, setImageFit] = useState("cover");
@@ -149,14 +151,22 @@ function AccountTile({
               : null}
           </p>
         )}
-        <p className={`account-tile-balance ${getSignedAmountClass(account.balance)}`}>
-          {formatCurrency(account.balance)}
-        </p>
+        {showBalance ? (
+          <p className={`account-tile-balance ${getSignedAmountClass(account.balance)}`}>
+            {formatCurrency(account.balance)}
+          </p>
+        ) : account.login_url || account.site_username ? (
+          <p className="account-tile-type">
+            {[account.site_username, account.login_url].filter(Boolean).join(" · ")}
+          </p>
+        ) : null}
       </div>
       <div className="account-tile-actions">
-        <Link className="record-link" to={registerPath}>
-          Register
-        </Link>
+        {showRegister ? (
+          <Link className="record-link" to={registerPath}>
+            Register
+          </Link>
+        ) : null}
         <BrowseLink className="record-link" to={editPath}>
           Edit
         </BrowseLink>

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useParams } from "react-router-dom";
+import { Navigate, useParams } from "react-router-dom";
 import { LayoutGrid, List as ListIcon } from "lucide-react";
 import { deleteRows, clearTable, runQuery, selectRows } from "../api/dbApi";
 import { exportTransactionsCsv, postDueRecurringTransactions, reorderAccounts } from "../api/budgetApi";
@@ -15,7 +15,7 @@ import DataTable from "../components/DataTable";
 import TableFilterBuilder from "../components/TableFilterBuilder";
 import TablePagination from "../components/TablePagination";
 import PageHeader from "../components/PageHeader";
-import { filterAccountListColumns } from "../utils/accounts";
+import { filterAccountListColumns, buildAccountTypeScopeClause, getAccountAppScope, mergeWhereClauses, SITE_TRACKER_APP } from "../utils/accounts";
 import { filterAuditColumns } from "../utils/auditFields";
 import { formatCurrency } from "../utils/format";
 import { getSignedAmountClass, isMoneyField } from "../utils/money";
@@ -33,6 +33,8 @@ import { useForeignKeyLabelMaps } from "../hooks/useForeignKeyLabelMaps";
 import { ACCOUNTS_PAGE_SIZE, resolveDefaultSortColumn, TABLE_PAGE_SIZE } from "../utils/tableList";
 function TableListPage() {
   const { appName = "budget", table } = useParams();
+  const redirectSiteTrackerAway =
+    appName === SITE_TRACKER_APP && table !== "accounts";
   const [rows, setRows] = useState([]);
   const [columns, setColumns] = useState([]);
   const [pkColumn, setPkColumn] = useState("id");
@@ -185,7 +187,18 @@ function TableListPage() {
 
     try {
       const typeMap = buildColumnTypeMap(columns, fieldDefinitions);
-      const { where, whereParams } = buildWhereFromConditions(appliedConditions, typeMap);
+      const { where: filterWhere, whereParams: filterParams } = buildWhereFromConditions(
+        appliedConditions,
+        typeMap
+      );
+      const accountScope = table === "accounts" ? getAccountAppScope(appName) : null;
+      const scopeClause = buildAccountTypeScopeClause(accountScope);
+      const { where, whereParams } = mergeWhereClauses(
+        filterWhere,
+        filterParams,
+        scopeClause.sql,
+        scopeClause.params
+      );
       const resolvedSort = resolveDefaultSortColumn(columns.map((column) => column.name));
       const orderBy = sortColumn ?? resolvedSort.column;
       const orderDirection = sortDirection ?? resolvedSort.direction;
@@ -213,6 +226,7 @@ function TableListPage() {
     fieldDefinitions,
     appliedConditions,
     table,
+    appName,
     page,
     pageSize,
     sortColumn,
@@ -254,7 +268,7 @@ function TableListPage() {
     }
 
     if (table === "accounts") {
-      return filterAccountListColumns(names);
+      return filterAccountListColumns(names, appName);
     }
 
     if (table === "transactions") {
@@ -262,7 +276,7 @@ function TableListPage() {
     }
 
     return names;
-  }, [columns, rows, table]);
+  }, [appName, columns, rows, table]);
 
   const defaultVisibleColumns = useMemo(() => {
     const audited = filterAuditColumns(allColumns);
@@ -271,21 +285,24 @@ function TableListPage() {
       return audited;
     }
 
-    const preferred = [
-      "name",
-      "account_type_id",
-      "owner_user_id",
-      "is_joint",
-      "opening_balance",
-      "balance",
-      "credit_limit",
-      "apr",
-      "minimum_payment",
-    ];
+    const preferred =
+      getAccountAppScope(appName) === "site"
+        ? ["name", "login_url", "site_username", "account_number", "owner_user_id"]
+        : [
+            "name",
+            "account_type_id",
+            "owner_user_id",
+            "is_joint",
+            "opening_balance",
+            "balance",
+            "credit_limit",
+            "apr",
+            "minimum_payment",
+          ];
     const ordered = preferred.filter((name) => audited.includes(name));
     const rest = audited.filter((name) => !preferred.includes(name));
     return [...ordered, ...rest];
-  }, [allColumns, table]);
+  }, [allColumns, appName, table]);
 
   const formatCell = useMemo(() => {
     return (column, value) => {
@@ -600,6 +617,10 @@ function TableListPage() {
     </>
   );
 
+  if (redirectSiteTrackerAway) {
+    return <Navigate to={`/app/${SITE_TRACKER_APP}/accounts`} replace />;
+  }
+
   return (
     <>
       <PageHeader
@@ -613,9 +634,11 @@ function TableListPage() {
           table === "transactions"
             ? "Transfer payments show on both accounts and are linked together."
             : table === "accounts"
-              ? canReorderAccounts
-                ? "Drag the grip handle to reorder accounts. Sorting by a column pauses custom order."
-                : "Browse accounts in list or tiles. Choose Custom order to drag and rearrange."
+              ? getAccountAppScope(appName) === "site"
+                ? "Track website logins and site credentials. Create Site accounts only here."
+                : canReorderAccounts
+                  ? "Drag the grip handle to reorder accounts. Sorting by a column pauses custom order."
+                  : "Browse budget accounts in list or tiles. Site logins live in Site Tracker."
               : "Browse, edit, create, and delete records for this table."
         }
       />
@@ -687,6 +710,8 @@ function TableListPage() {
                   accountId={row[pkColumn]}
                   appName={appName}
                   typeLabel={formatReference("account_type_id", row.account_type_id)}
+                  showBalance={getAccountAppScope(appName) !== "site"}
+                  showRegister={getAccountAppScope(appName) !== "site"}
                   onDelete={setDeleteTarget}
                   reorderable={canReorderAccounts}
                   isDragging={dragIndex === index}

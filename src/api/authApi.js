@@ -22,6 +22,7 @@ export async function getMe() {
     return {
       user: payload.user ?? null,
       sessionIdleSeconds: Number(payload.session_idle_seconds) || null,
+      isLocalNetwork: Boolean(payload.is_local_network),
     };
   } catch {
     return null;

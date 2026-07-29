@@ -5999,6 +5999,46 @@ input.money-negative {
   background: transparent;
 }
 
+/* Tailwind preflight sets list-style: none — restore markers in the note editor. */
+.tiptap-surface ul:not([data-type="taskList"]),
+.tiptap-surface ol {
+  margin: 0.5rem 0;
+  padding-left: 1.5rem;
+}
+
+.tiptap-surface ul:not([data-type="taskList"]) {
+  list-style-type: disc;
+}
+
+.tiptap-surface ul:not([data-type="taskList"]) ul {
+  list-style-type: circle;
+}
+
+.tiptap-surface ul:not([data-type="taskList"]) ul ul {
+  list-style-type: square;
+}
+
+.tiptap-surface ol {
+  list-style-type: decimal;
+}
+
+.tiptap-surface ol ol {
+  list-style-type: lower-alpha;
+}
+
+.tiptap-surface ol ol ol {
+  list-style-type: lower-roman;
+}
+
+.tiptap-surface li {
+  display: list-item;
+  margin: 0.15rem 0;
+}
+
+.tiptap-surface li p {
+  margin: 0;
+}
+
 .tiptap-surface ul[data-type="taskList"] {
   list-style: none;
   padding-left: 0.15rem;

@@ -76,6 +76,9 @@ export function usePageHelpFromPath(pathname, params = {}) {
   }
 
   if (table) {
+    if (app === "site-tracker" && table === "accounts") {
+      return { app: "site-tracker", topic: "overview" };
+    }
     return { app: app || "budget", topic: table };
   }
 
@@ -90,6 +93,9 @@ export function usePageHelpFromPath(pathname, params = {}) {
   }
   if (app === "decisions") {
     return { app: "decisions", topic: "overview" };
+  }
+  if (app === "site-tracker") {
+    return { app: "site-tracker", topic: "overview" };
   }
 
   return null;

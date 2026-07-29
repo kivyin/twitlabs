@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 import { getAccountJointUsers, setAccountJointUsers, syncAccountBalance } from "../api/budgetApi";
 import { deleteRows, insertRow, runQuery, selectRows, updateRows } from "../api/dbApi";
+import { getMe } from "../api/authApi";
 import { getCollectionDefinition, getFieldDefinitions } from "../api/dictionaryApi";
 import AccountImageUpload from "../components/AccountImageUpload";
 import AccountBalanceTrendChart from "../components/AccountBalanceTrendChart";
@@ -23,11 +24,16 @@ import {
   normalizeBudgetMoneyField,
 } from "../utils/money";
 import {
+  accountTypeAllowedForScope,
   filterAccountFormColumns,
+  filterAccountTypeOptions,
   filterVisibleAccountFormColumns,
+  getAccountAppScope,
   getAccountOpeningBalanceLabel,
   getHiddenAccountFieldDefaults,
   isSiteAccountType,
+  SITE_ACCOUNT_TYPE_NAME,
+  SITE_TRACKER_APP,
   shouldShowSpendingByCategoryChart,
   sortAccountFormColumns,
 } from "../utils/accounts";
@@ -66,7 +72,8 @@ function TableFormPage() {
   const [refTableByColumn, setRefTableByColumn] = useState({});
   const [relatedReady, setRelatedReady] = useState(false);
   const userLabelMap = useUserLabelMap();
-  const { user, isAdmin } = useAuth();
+  const { user, isAdmin, isLocalNetwork, setIsLocalNetwork } = useAuth();
+  const [passwordRedacted, setPasswordRedacted] = useState(false);
   const accountTypeName = resolveReferenceLabel(
     formData.account_type_id,
     labelMaps.account_types ?? {}
@@ -134,14 +141,24 @@ function TableFormPage() {
           columns: tableColumns,
         });
 
+        const accountScope = table === "accounts" ? getAccountAppScope(appName) : null;
+        const scopedOptions = { ...optionsByColumn };
+        if (table === "accounts" && scopedOptions.account_type_id) {
+          scopedOptions.account_type_id = filterAccountTypeOptions(
+            scopedOptions.account_type_id,
+            accountScope
+          );
+        }
+
         setForeignKeys(refMetaByColumn);
         setRefTableByColumn(nextRefTableByColumn);
         setLabelMaps(nextLabelMaps);
-        setFkOptions(optionsByColumn);
-        setUserOptions(optionsByColumn.owner_user_id ?? optionsByColumn.user_id ?? []);
+        setFkOptions(scopedOptions);
+        setUserOptions(scopedOptions.owner_user_id ?? scopedOptions.user_id ?? []);
 
         if (table !== "accounts") {
           setJointUserIds([]);
+          setPasswordRedacted(false);
         }
 
         if (isEdit) {
@@ -155,6 +172,29 @@ function TableFormPage() {
           if (!row) {
             throw new Error("Record not found.");
           }
+
+          if (table === "accounts") {
+            if (result.is_local_network != null) {
+              setIsLocalNetwork(Boolean(result.is_local_network));
+            } else {
+              const me = await getMe();
+              if (me) setIsLocalNetwork(Boolean(me.isLocalNetwork));
+            }
+            setPasswordRedacted(Boolean(row.site_password_redacted));
+          }
+
+          if (table === "accounts" && accountScope) {
+            const typeLabel =
+              nextLabelMaps.account_types?.[String(row.account_type_id)] ?? "";
+            if (!accountTypeAllowedForScope(typeLabel, accountScope)) {
+              throw new Error(
+                accountScope === "site"
+                  ? "This is a budget account. Open it from Budget instead."
+                  : "This is a site account. Open it from Site Tracker instead."
+              );
+            }
+          }
+
           setFormData(
             Object.fromEntries(
               tableColumns.map((column) => [
@@ -164,10 +204,28 @@ function TableFormPage() {
             )
           );
           if (table === "accounts") {
-            const joint = await getAccountJointUsers(recordId);
-            setJointUserIds((joint.user_ids ?? []).map(String));
+            if (!isSiteAccountType(
+              nextLabelMaps.account_types?.[String(row.account_type_id)] ?? ""
+            )) {
+              const joint = await getAccountJointUsers(recordId);
+              setJointUserIds((joint.user_ids ?? []).map(String));
+            } else {
+              setJointUserIds([]);
+            }
           }
         } else {
+          setPasswordRedacted(false);
+          if (table === "accounts") {
+            const me = await getMe();
+            if (me) setIsLocalNetwork(Boolean(me.isLocalNetwork));
+          }
+          const initialTypeId =
+            table === "accounts" && accountScope === "site"
+              ? scopedOptions.account_type_id?.find(
+                  (option) => option.label === SITE_ACCOUNT_TYPE_NAME
+                )?.value ?? ""
+              : "";
+
           setFormData(
             Object.fromEntries(
               tableColumns.map((column) => {
@@ -179,6 +237,9 @@ function TableFormPage() {
                 }
                 if (table === "accounts" && column.name === "owner_user_id" && user?.id) {
                   return [column.name, String(user.id)];
+                }
+                if (table === "accounts" && column.name === "account_type_id" && initialTypeId) {
+                  return [column.name, String(initialTypeId)];
                 }
                 return [column.name, ""];
               })
@@ -264,10 +325,17 @@ function TableFormPage() {
         "The person whose name is on the account (for example the cardholder). This is separate from who added the account in the app.";
       hints.is_joint =
         "Yes if more than one person is on the account. You can then select additional joint users.";
+      if (passwordRedacted || !isLocalNetwork) {
+        hints.site_password =
+          "Saved passwords can only be viewed on the local network. Leave blank to keep the current password, or enter a new one to replace it.";
+      } else {
+        hints.site_password =
+          "Stored login password. Masked on the form; admins on the local network can reveal it.";
+      }
     }
 
     return hints;
-  }, [accountTypeName, editableColumns, table]);
+  }, [accountTypeName, editableColumns, isLocalNetwork, passwordRedacted, table]);
 
   const moneyInputProps = useMemo(() => {
     const props = {};
@@ -336,6 +404,15 @@ function TableFormPage() {
       }
 
       if (table === "accounts") {
+        const accountScope = getAccountAppScope(appName);
+        if (!accountTypeAllowedForScope(accountTypeName, accountScope)) {
+          throw new Error(
+            accountScope === "site"
+              ? "Site Tracker can only create Site accounts."
+              : "Budget can only create budget-related accounts. Use Site Tracker for site logins."
+          );
+        }
+
         const hiddenDefaults = getHiddenAccountFieldDefaults(accountTypeName, formData);
         for (const [fieldName, value] of Object.entries(hiddenDefaults)) {
           if (isMoneyField(table, fieldName)) {
@@ -356,6 +433,18 @@ function TableFormPage() {
         }
 
         data.is_joint = Number(data.is_joint) === 1 ? 1 : 0;
+        if (isSiteAccountType(accountTypeName)) {
+          data.is_joint = 0;
+        }
+
+        // Off local network the stored password is redacted; empty means "keep existing".
+        if (
+          isEdit &&
+          passwordRedacted &&
+          (data.site_password === "" || data.site_password == null)
+        ) {
+          delete data.site_password;
+        }
       }
 
       let savedAccountId = isEdit ? Number(recordId) : null;
@@ -436,6 +525,12 @@ function TableFormPage() {
   const accountIsLoan = isLoanAccountType(accountTypeName);
   const accountIsSite = isSiteAccountType(accountTypeName);
 
+  useEffect(() => {
+    if (accountIsSite && accountTab !== "details") {
+      setAccountTab("details");
+    }
+  }, [accountIsSite, accountTab, setAccountTab]);
+
   const accountOwnershipColumns = useMemo(() => {
     if (table !== "accounts") {
       return { beforeJoint: editableColumns, afterJoint: [] };
@@ -464,7 +559,7 @@ function TableFormPage() {
   );
 
   const jointUsersField =
-    table === "accounts" && Number(formData.is_joint) === 1 ? (
+    table === "accounts" && !accountIsSite && Number(formData.is_joint) === 1 ? (
       <fieldset className="account-joint-users">
         <legend>Joint users</legend>
         <p className="subtext">
@@ -514,7 +609,12 @@ function TableFormPage() {
         fieldHints={fieldHints}
         inputProps={moneyInputProps}
         onChange={handleChange}
-        canRevealSecrets={isAdmin}
+        canRevealSecrets={isAdmin && isLocalNetwork && !passwordRedacted}
+        secretPlaceholders={
+          passwordRedacted
+            ? { site_password: "Saved — view only on local network" }
+            : undefined
+        }
       />
       {jointUsersField}
       {accountOwnershipColumns.afterJoint.length > 0 && (
@@ -528,7 +628,12 @@ function TableFormPage() {
           fieldHints={fieldHints}
           inputProps={moneyInputProps}
           onChange={handleChange}
-          canRevealSecrets={isAdmin}
+          canRevealSecrets={isAdmin && isLocalNetwork && !passwordRedacted}
+          secretPlaceholders={
+            passwordRedacted
+              ? { site_password: "Saved — view only on local network" }
+              : undefined
+          }
         />
       )}
       {readOnlyColumns.length > 0 && (
@@ -571,10 +676,14 @@ function TableFormPage() {
         }
         subtitle={
           isAccountEdit
-            ? "Review charts, edit account details, or manage transactions."
+            ? accountIsSite
+              ? "Edit site login details for this account."
+              : "Review charts, edit account details, or manage transactions."
             : isEdit
               ? "Update the fields below and save your changes."
-              : "Fill in the fields below to create a record."
+              : appName === SITE_TRACKER_APP && table === "accounts"
+                ? "Create a Site account with login URL, username, and password."
+                : "Fill in the fields below to create a record."
         }
         meta={
           isAccountEdit && !loading ? (
@@ -620,11 +729,14 @@ function TableFormPage() {
           )}
 
           <div className="account-edit-tabs" role="tablist" aria-label="Account sections">
-            {[
-              { id: "charts", label: "Charts" },
-              { id: "details", label: "Details" },
-              { id: "transactions", label: "Transactions" },
-            ].map((tab) => {
+            {(accountIsSite
+              ? [{ id: "details", label: "Details" }]
+              : [
+                  { id: "charts", label: "Charts" },
+                  { id: "details", label: "Details" },
+                  { id: "transactions", label: "Transactions" },
+                ]
+            ).map((tab) => {
               const selected = accountTab === tab.id;
               return (
                 <button

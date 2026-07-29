@@ -1,6 +1,7 @@
 import { isLiabilityAccountType, isLoanAccountType } from "./money";
 
 export const SITE_ACCOUNT_TYPE_NAME = "Site account";
+export const SITE_TRACKER_APP = "site-tracker";
 
 /** Not shown on the account create/edit form (managed by dedicated UI instead). */
 export const ACCOUNT_FORM_HIDDEN_FIELDS = new Set([
@@ -29,6 +30,16 @@ export const ACCOUNT_LIST_HIDDEN_FIELDS = new Set([
   "sort_order",
 ]);
 
+/** Extra money columns hidden when browsing Site Tracker accounts. */
+export const SITE_TRACKER_LIST_HIDDEN_FIELDS = new Set([
+  "opening_balance",
+  "balance",
+  "credit_limit",
+  "apr",
+  "minimum_payment",
+  "is_joint",
+]);
+
 const ACCOUNT_FORM_FIELD_ORDER = [
   "name",
   "account_type_id",
@@ -49,13 +60,75 @@ export function isSiteAccountType(typeName = "") {
   return typeName === SITE_ACCOUNT_TYPE_NAME;
 }
 
+/** Which account types an app may list / create: "site", "budget", or null (no filter). */
+export function getAccountAppScope(appName = "") {
+  if (appName === SITE_TRACKER_APP) {
+    return "site";
+  }
+  if (appName === "budget") {
+    return "budget";
+  }
+  return null;
+}
+
+export function accountTypeAllowedForScope(typeName = "", scope) {
+  if (!scope) {
+    return true;
+  }
+  const isSite = isSiteAccountType(typeName);
+  return scope === "site" ? isSite : !isSite;
+}
+
+/**
+ * SQL fragment + params that restrict accounts by Site vs budget types.
+ * Empty sql when scope is null.
+ */
+export function buildAccountTypeScopeClause(scope, columnSql = "account_type_id") {
+  if (scope === "site") {
+    return {
+      sql: `${columnSql} IN (SELECT id FROM account_types WHERE name = ?)`,
+      params: [SITE_ACCOUNT_TYPE_NAME],
+    };
+  }
+  if (scope === "budget") {
+    return {
+      sql: `${columnSql} NOT IN (SELECT id FROM account_types WHERE name = ?)`,
+      params: [SITE_ACCOUNT_TYPE_NAME],
+    };
+  }
+  return { sql: "", params: [] };
+}
+
+export function mergeWhereClauses(baseWhere = "", baseParams = [], extraSql = "", extraParams = []) {
+  const parts = [baseWhere, extraSql].map((part) => String(part || "").trim()).filter(Boolean);
+  return {
+    where: parts.length === 0 ? "" : parts.map((part) => `(${part})`).join(" AND "),
+    whereParams: [...(baseParams ?? []), ...(extraParams ?? [])],
+  };
+}
+
+export function filterAccountTypeOptions(options = [], scope) {
+  if (!scope) {
+    return options;
+  }
+  return options.filter((option) => accountTypeAllowedForScope(option.label ?? "", scope));
+}
+
 /** Loans and site logins are not spending accounts — hide category pie charts for them. */
 export function shouldShowSpendingByCategoryChart(accountTypeName = "") {
   return !isLoanAccountType(accountTypeName) && !isSiteAccountType(accountTypeName);
 }
 
-export function filterAccountListColumns(columnNames) {
-  return columnNames.filter((name) => !ACCOUNT_LIST_HIDDEN_FIELDS.has(name));
+export function filterAccountListColumns(columnNames, appName = "budget") {
+  return columnNames.filter((name) => {
+    if (ACCOUNT_LIST_HIDDEN_FIELDS.has(name)) {
+      return false;
+    }
+    if (getAccountAppScope(appName) === "site" && SITE_TRACKER_LIST_HIDDEN_FIELDS.has(name)) {
+      return false;
+    }
+    return true;
+  });
 }
 
 export function filterAccountFormColumns(columns) {
@@ -74,6 +147,10 @@ export function sortAccountFormColumns(columns) {
 
 /** Whether a form field should appear for the selected account type. */
 export function isAccountFormFieldVisible(columnName, accountTypeName = "") {
+  if (columnName === "is_joint" && isSiteAccountType(accountTypeName)) {
+    return false;
+  }
+
   if (columnName === OPENING_BALANCE_FIELD) {
     // Banks: starting cash. Cards/loans: starting amount owed (before app transactions).
     return !isSiteAccountType(accountTypeName);
@@ -113,6 +190,10 @@ export function getHiddenAccountFieldDefaults(accountTypeName = "", existingValu
 
   if (!isAccountFormFieldVisible(OPENING_BALANCE_FIELD, accountTypeName)) {
     defaults[OPENING_BALANCE_FIELD] = 0;
+  }
+
+  if (!isAccountFormFieldVisible("is_joint", accountTypeName)) {
+    defaults.is_joint = 0;
   }
 
   for (const fieldName of LIABILITY_ONLY_FIELDS) {

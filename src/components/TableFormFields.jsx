@@ -2,18 +2,19 @@ import { useState } from "react";
 import { isFullWidthFormField } from "../utils/formLayout";
 import FormField from "./ui/FormField";
 
-function MaskedPasswordInput({ id, value, onChange, canReveal, label }) {
+function MaskedPasswordInput({ id, value, onChange, canReveal, label, placeholder = "" }) {
   const [revealed, setRevealed] = useState(false);
 
   return (
     <div className="password-field-wrap">
       <input
         id={id}
-        type={revealed ? "text" : "password"}
+        type={revealed && canReveal ? "text" : "password"}
         value={value}
         onChange={onChange}
         autoComplete="new-password"
         aria-label={label}
+        placeholder={placeholder}
       />
       {canReveal ? (
         <button
@@ -44,6 +45,7 @@ function TableFormFields({
   readOnly = false,
   displayValues = {},
   canRevealSecrets = false,
+  secretPlaceholders = {},
   layout = "grid",
 }) {
   const fields = columns.map((column) => {
@@ -106,6 +108,7 @@ function TableFormFields({
             onChange={(event) => onChange(column.name, event.target.value)}
             canReveal={canRevealSecrets}
             label={label}
+            placeholder={secretPlaceholders[column.name] ?? ""}
           />
         ) : (
           <input

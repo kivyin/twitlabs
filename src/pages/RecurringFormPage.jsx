@@ -56,7 +56,13 @@ function RecurringFormPage() {
       try {
         const [accountsResult, categoriesResult, payeesResult, usersResult] = await Promise.all([
           runQuery({
-            sql: `SELECT id, name FROM accounts ORDER BY name`,
+            sql: `
+              SELECT a.id, a.name
+              FROM accounts a
+              JOIN account_types at ON at.id = a.account_type_id
+              WHERE at.name != 'Site account'
+              ORDER BY a.name
+            `,
           }),
           runQuery({
             sql: `

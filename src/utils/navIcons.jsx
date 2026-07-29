@@ -16,6 +16,7 @@ export const NAV_ICON_OPTIONS = [
   { value: "focus", label: "Focus" },
   { value: "notes", label: "Notes" },
   { value: "decisions", label: "Decision Picker" },
+  { value: "site-tracker", label: "Site Tracker" },
 ];
 
 export const navIcons = {
@@ -111,6 +112,14 @@ export const navIcons = {
       <circle cx="12" cy="12" r="9" />
       <path d="M12 3v9l6 3" />
       <circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none" />
+    </>
+  ),
+  "site-tracker": (
+    <>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M3 12h18" />
+      <path d="M12 3a14 14 0 0 1 0 18" />
+      <path d="M12 3a14 14 0 0 0 0 18" />
     </>
   ),
 };

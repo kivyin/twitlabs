@@ -4,6 +4,7 @@ export const APP_USER_ROLES = {
   tasks: "task_user",
   notes: "note_user",
   decisions: "decision_user",
+  "site-tracker": "site_tracker_user",
 };
 
 export const APP_ROLE_LABELS = {
@@ -11,6 +12,7 @@ export const APP_ROLE_LABELS = {
   task_user: "Tasks user",
   note_user: "Notes user",
   decision_user: "Decision Picker user",
+  site_tracker_user: "Site Tracker user",
 };
 
 export function getAppUserRole(appName) {

@@ -192,7 +192,7 @@ const DOC_APPS = {
         summary: "After sign-in, the home page lists every application your roles allow.",
         sections: [
           section("How it works", [
-            "Each card opens an application (Budget, Tasks, Notes, Decision Picker, and others assigned to you).",
+            "Each card opens an application (Budget, Tasks, Notes, Decision Picker, Site Tracker, and others assigned to you).",
             "Administrators see every registered application.",
             "Use the left sidebar to move between apps without returning home.",
             "Open Documentation from the sidebar for field-level and process help.",
@@ -310,7 +310,12 @@ const DOC_APPS = {
             "Credit card — starting amount owed, credit limit, APR, and minimum payment. Balance is amount owed. Optimized for point-of-sale charges.",
             "Line of credit — starting amount owed, credit limit, APR, and minimum payment (same revolving fields as a card). Designed for cash draws: use Transfer to move funds to a bank or to pay down a credit card/loan.",
             "Loan — starting amount owed (principal when you begin tracking), APR, and minimum payment. On transactions choose Payment and enter a positive amount to pay it down (or use a bank→loan transfer).",
-            "Site account — login URL, username, and password; no money fields.",
+            "Site account — managed in the Site Tracker app (login URL, username, password; no money fields).",
+          ]),
+          section("Budget vs Site Tracker", [
+            "Budget lists only money accounts (banks, cards, loans, lines of credit).",
+            "Site Tracker lists only Site accounts for website logins.",
+            "Creating an account in Budget never offers the Site type; Site Tracker only creates Site accounts.",
           ]),
           section("Owner and joint accounts", [
             "Owner is the person whose name is on the account (cardholder / named account holder).",
@@ -333,7 +338,7 @@ const DOC_APPS = {
           field("name", "Name", "Display name, such as Chase Checking."),
           field("account_type_id", "Account type", "Bank checking/savings, credit card, line of credit, loan, or site account. Controls which money and login fields appear."),
           field("owner_user_id", "Owner", "Person whose name is on the account. Separate from who added the account in the app."),
-          field("is_joint", "Joint account", "Yes if additional people share the account. When Yes, select joint users on the form."),
+          field("is_joint", "Joint account", "Yes if additional people share the account. When Yes, select joint users on the form. Not used for Site accounts."),
           field("opening_balance", "Opening / starting owed", "Banks: starting cash. Credit cards, lines of credit, and loans: starting amount owed before app transactions. For loans, enter the principal you still owe — payments then reduce it."),
           field("balance", "Balance", "Current balance maintained by transactions. Not edited directly on the form — use Sync on the register if stored balance diverges from the ledger."),
           field("credit_limit", "Credit limit", "Credit cards and lines of credit. Available credit is limit minus amount owed. Loans use Starting amount owed instead."),
@@ -342,7 +347,7 @@ const DOC_APPS = {
           field("account_number", "Account number", "Optional reference number for your records."),
           field("login_url", "URL", "Website for online access."),
           field("site_username", "Username", "Login username for the site."),
-          field("site_password", "Password", "Stored login password. Masked on the form; admins can reveal it."),
+          field("site_password", "Password", "Stored login password. Only returned and revealable on the local network; admins can unmask it there. Off-network the value is hidden — leave blank to keep, or enter a new password to replace it."),
           field("notes", "Notes", "Free-form notes about the account."),
           field("image_path", "Account image", "Optional picture shown on account tiles. Upload on the edit screen."),
           field("user_id", "Added by", "User who created the account record in the app. Set automatically and not shown on the form."),
@@ -864,6 +869,36 @@ const DOC_APPS = {
             "Your option list is saved per user and persists across logouts.",
             "Clear all removes every option from the current list.",
             "Great for dinner spots, chore picks, movie night, or any coin-flip moment.",
+          ]),
+        ],
+      },
+    },
+  },
+
+  "site-tracker": {
+    label: "Site Tracker",
+    description: "Track website logins and site accounts separately from Budget money accounts.",
+    topics: {
+      overview: {
+        title: "Site Tracker overview",
+        summary: "Store site logins (URL, username, password) without mixing them into Budget.",
+        sections: [
+          section("How to use", [
+            "Open Site Tracker from the workspace home or the sidebar.",
+            "Use Site Accounts to browse existing logins in list or tile view.",
+            "Create a new Site account — the type is fixed to Site account.",
+            "Edit a record to update URL, username, password, notes, and ownership.",
+          ]),
+          section("Access", [
+            "Grant the Site Tracker user role under Administration → Users.",
+            "System admins can open every app, including Site Tracker.",
+            "Users without admin and without the Site Tracker role do not see the app.",
+          ]),
+          section("Relationship to Budget", [
+            "Site accounts use the same accounts table, filtered to the Site account type.",
+            "Budget no longer lists Site accounts and cannot create them.",
+            "Site accounts are not joint — ownership is a single owner only.",
+            "Passwords are only readable on the local network; admins can reveal them there. Off-network the saved password is hidden.",
           ]),
         ],
       },

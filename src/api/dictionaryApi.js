@@ -4,6 +4,18 @@ import { apiRequest } from "./http";
 const SYSTEM_DICTIONARY_TABLE = "system_dictionary";
 const APPLICATIONS_TABLE = "applications";
 
+/** Site Tracker reuses Budget's accounts dictionary metadata. */
+function resolveDictionaryApplication(tableName, application) {
+  if (
+    typeof application === "string" &&
+    application.trim() === "site-tracker" &&
+    tableName === "accounts"
+  ) {
+    return "budget";
+  }
+  return application;
+}
+
 export async function getApplications() {
   const result = await runQuery({
     table: APPLICATIONS_TABLE,
@@ -45,8 +57,9 @@ export async function getCollectionDefinitions(application) {
 }
 
 export async function getCollectionDefinition(tableName, application) {
+  const dictionaryApp = resolveDictionaryApplication(tableName, application);
   const hasApplicationFilter =
-    typeof application === "string" && application.trim().length > 0;
+    typeof dictionaryApp === "string" && dictionaryApp.trim().length > 0;
   const result = await runQuery({
     table: SYSTEM_DICTIONARY_TABLE,
     sql: `
@@ -59,7 +72,7 @@ export async function getCollectionDefinition(tableName, application) {
       LIMIT 1
     `,
     params: hasApplicationFilter
-      ? [tableName, application.trim()]
+      ? [tableName, dictionaryApp.trim()]
       : [tableName],
   });
 
@@ -67,8 +80,9 @@ export async function getCollectionDefinition(tableName, application) {
 }
 
 export async function getFieldDefinitions(tableName, application) {
+  const dictionaryApp = resolveDictionaryApplication(tableName, application);
   const hasApplicationFilter =
-    typeof application === "string" && application.trim().length > 0;
+    typeof dictionaryApp === "string" && dictionaryApp.trim().length > 0;
   const result = await runQuery({
     table: SYSTEM_DICTIONARY_TABLE,
     sql: `
@@ -80,7 +94,7 @@ export async function getFieldDefinitions(tableName, application) {
       ORDER BY d.sort_order, d.id
     `,
     params: hasApplicationFilter
-      ? [tableName, application.trim()]
+      ? [tableName, dictionaryApp.trim()]
       : [tableName],
   });
 

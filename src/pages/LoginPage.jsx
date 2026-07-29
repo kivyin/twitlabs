@@ -83,11 +83,13 @@ function LoginPage() {
     clearAuthMessage();
     setLoading(true);
     try {
-      const { token, user: nextUser, session_idle_seconds: sessionIdleSeconds } = await apiLogin(
-        username,
-        password
-      );
-      login(token, nextUser, sessionIdleSeconds);
+      const {
+        token,
+        user: nextUser,
+        session_idle_seconds: sessionIdleSeconds,
+        is_local_network: isLocalNetwork,
+      } = await apiLogin(username, password);
+      login(token, nextUser, sessionIdleSeconds, isLocalNetwork);
       navigate(resolvePostLoginPath(location.state?.from), { replace: true });
     } catch (err) {
       setError(err.message);

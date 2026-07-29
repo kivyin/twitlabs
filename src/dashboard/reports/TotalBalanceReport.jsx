@@ -20,9 +20,11 @@ function TotalBalanceReport() {
         const result = await runQuery({
           sql: `
             SELECT
-              COALESCE(SUM(balance), 0) AS total,
+              COALESCE(SUM(a.balance), 0) AS total,
               COUNT(*) AS account_count
-            FROM accounts
+            FROM accounts a
+            JOIN account_types at ON at.id = a.account_type_id
+            WHERE at.name != 'Site account'
           `,
         });
         if (!active) return;

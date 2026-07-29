@@ -4,6 +4,18 @@
  */
 export const CHANGELOG = [
   {
+    version: "1.9",
+    date: "2026-07-29",
+    title: "Site Tracker app",
+    highlights: [
+      "New Site Tracker app for website logins and Site accounts",
+      "Budget accounts list excludes Site accounts to reduce clutter",
+      "Account create forms are scoped: Budget = money types, Site Tracker = Site only",
+      "Site Tracker user role; admins still see every app",
+      "Left-nav Site Accounts entry and Help docs for Site Tracker",
+    ],
+  },
+  {
     version: "1.8",
     date: "2026-07-27",
     title: "Decision Picker app",

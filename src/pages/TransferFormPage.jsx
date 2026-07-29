@@ -71,6 +71,7 @@ function TransferFormPage() {
               SELECT a.id, a.name, at.name AS account_type_name
               FROM accounts a
               JOIN account_types at ON at.id = a.account_type_id
+              WHERE at.name != 'Site account'
               ORDER BY a.name
             `,
           }),
