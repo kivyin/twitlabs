@@ -362,6 +362,23 @@ export function resolveLiabilityTransactionAmount(amount, entryMode = "payment")
   return entryMode === "charge" ? absolute : -absolute;
 }
 
+/**
+ * Cash/bank forms collect a positive amount plus Deposit/Withdrawal mode.
+ * Deposits are stored positive; withdrawals are stored negative.
+ * Avoids needing a minus key on mobile number keypads.
+ */
+export function resolveCashTransactionAmount(amount, entryMode = "withdrawal") {
+  const numeric = validateNonZeroMoney(amount, "Amount");
+  const absolute = Math.abs(numeric);
+  return entryMode === "deposit" ? absolute : -absolute;
+}
+
+export function getDefaultCashEntryMode(categoryType = "") {
+  const normalizedType = String(categoryType || "").trim().toLowerCase();
+  if (normalizedType === "income") return "deposit";
+  return "withdrawal";
+}
+
 export function getDefaultLiabilityEntryMode(accountTypeName = "") {
   return isLoanAccountType(accountTypeName) ? "payment" : "charge";
 }

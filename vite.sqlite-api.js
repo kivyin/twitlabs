@@ -1808,6 +1808,45 @@ const ensureNotesEditorColumns = () => {
   if (!hasColumn(NOTES_TABLE, "show_grid")) {
     run(`ALTER TABLE ${NOTES_TABLE} ADD COLUMN show_grid INTEGER NOT NULL DEFAULT 0`);
   }
+
+  const topicsExists =
+    all("SELECT name FROM sqlite_master WHERE type='table' AND name=? LIMIT 1", [NOTE_TOPICS_TABLE])
+      .length > 0;
+  if (topicsExists && hasColumn(NOTES_TABLE, "topic_id")) {
+    // Move topic notes onto their parent subject, then drop topics.
+    run(`
+      UPDATE ${NOTES_TABLE}
+      SET
+        subject_id = COALESCE(
+          (
+            SELECT t.subject_id
+            FROM ${NOTE_TOPICS_TABLE} t
+            WHERE t.id = ${NOTES_TABLE}.topic_id
+          ),
+          subject_id
+        ),
+        topic_id = NULL
+      WHERE topic_id IS NOT NULL
+    `);
+    run(`
+      UPDATE ${NOTES_TABLE}
+      SET notebook_id = (
+        SELECT s.notebook_id
+        FROM ${NOTE_SUBJECTS_TABLE} s
+        WHERE s.id = ${NOTES_TABLE}.subject_id
+      )
+      WHERE subject_id IS NOT NULL
+        AND (
+          notebook_id IS NULL
+          OR notebook_id != (
+            SELECT s.notebook_id
+            FROM ${NOTE_SUBJECTS_TABLE} s
+            WHERE s.id = ${NOTES_TABLE}.subject_id
+          )
+        )
+    `);
+    run(`DELETE FROM ${NOTE_TOPICS_TABLE}`);
+  }
 };
 
 const ensureNotesDictionaryLabels = () => {
@@ -7967,17 +8006,15 @@ const assertNotesAccess = (user) => {
   }
 };
 
-const buildTopicTree = (topics, parentId = null) =>
-  topics
-    .filter((topic) => (topic.parent_topic_id ?? null) === parentId)
-    .map((topic) => ({
-      ...topic,
-      subtopics: buildTopicTree(topics, topic.id),
-    }));
-
-const buildNoteOutlineTree = (allNotes, parentNoteId = null) =>
+const buildNoteOutlineTree = (allNotes, parentNoteId = null, isRootCandidate = null) =>
   allNotes
-    .filter((note) => (note.parent_note_id ?? null) === parentNoteId)
+    .filter((note) => {
+      if ((note.parent_note_id ?? null) !== parentNoteId) return false;
+      if (parentNoteId === null && typeof isRootCandidate === "function") {
+        return isRootCandidate(note);
+      }
+      return true;
+    })
     .sort(
       (a, b) =>
         Number(b.is_pinned) - Number(a.is_pinned) ||
@@ -7992,40 +8029,7 @@ const buildNoteOutlineTree = (allNotes, parentNoteId = null) =>
       notes: buildNoteOutlineTree(allNotes, note.id),
     }));
 
-const attachNotesToTopics = (topics, allNotes) =>
-  topics.map((topic) => ({
-    ...topic,
-    subtopics: attachNotesToTopics(topic.subtopics ?? [], allNotes),
-    notes: buildNoteOutlineTree(
-      allNotes.filter(
-        (note) => note.topic_id === topic.id && (note.parent_note_id ?? null) === null
-      )
-    ),
-  }));
-
-const resolveNotePlacement = ({ topic_id, subject_id, notebook_id, userId }) => {
-  if (topic_id) {
-    const topic = all(
-      `
-        SELECT t.id, t.subject_id, s.notebook_id, nb.user_id
-        FROM ${NOTE_TOPICS_TABLE} t
-        JOIN ${NOTE_SUBJECTS_TABLE} s ON s.id = t.subject_id
-        JOIN ${NOTEBOOKS_TABLE} nb ON nb.id = s.notebook_id
-        WHERE t.id = ?
-        LIMIT 1
-      `,
-      [topic_id]
-    )[0];
-    if (!topic || topic.user_id !== userId) {
-      throw new Error("Topic not found.");
-    }
-    return {
-      topic_id: topic.id,
-      subject_id: topic.subject_id,
-      notebook_id: topic.notebook_id,
-    };
-  }
-
+const resolveNotePlacement = ({ subject_id, notebook_id, userId }) => {
   if (subject_id) {
     const subject = all(
       `
@@ -8091,37 +8095,21 @@ const getNotesTree = (userId) => {
     return {
       ...notebook,
       notes: buildNoteOutlineTree(
-        allNotes.filter(
-          (note) =>
-            note.notebook_id === notebook.id &&
-            (note.subject_id ?? null) === null &&
-            (note.topic_id ?? null) === null &&
-            (note.parent_note_id ?? null) === null
-        )
+        allNotes,
+        null,
+        (note) =>
+          note.notebook_id === notebook.id &&
+          (note.subject_id ?? null) === null &&
+          (note.topic_id ?? null) === null
       ),
-      subjects: subjects.map((subject) => {
-        const topics = all(
-          `
-            SELECT *
-            FROM ${NOTE_TOPICS_TABLE}
-            WHERE subject_id = ?
-            ORDER BY sort_order ASC, name ASC
-          `,
-          [subject.id]
-        );
-        return {
-          ...subject,
-          notes: buildNoteOutlineTree(
-            allNotes.filter(
-              (note) =>
-                note.subject_id === subject.id &&
-                (note.topic_id ?? null) === null &&
-                (note.parent_note_id ?? null) === null
-            )
-          ),
-          topics: attachNotesToTopics(buildTopicTree(topics), allNotes),
-        };
-      }),
+      subjects: subjects.map((subject) => ({
+        ...subject,
+        notes: buildNoteOutlineTree(
+          allNotes,
+          null,
+          (note) => note.subject_id === subject.id
+        ),
+      })),
     };
   });
 };
@@ -8280,6 +8268,50 @@ const validateParentNote = (parentNoteId, userId, currentNoteId = null) => {
   return parent.id;
 };
 
+const localizeRemoteImageUrl = async (rawUrl) => {
+  let parsed;
+  try {
+    parsed = new URL(String(rawUrl ?? "").trim());
+  } catch {
+    throw new Error("Image URL is invalid.");
+  }
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    throw new Error("Only http(s) image URLs can be localized.");
+  }
+
+  const response = await fetch(parsed.toString(), {
+    redirect: "follow",
+    headers: {
+      Accept: "image/*,*/*;q=0.8",
+      "User-Agent": "TwitlabsNotes/1.0",
+    },
+  });
+  if (!response.ok) {
+    throw new Error(`Could not download image (${response.status}).`);
+  }
+
+  const contentType = String(response.headers.get("content-type") || "")
+    .split(";")[0]
+    .trim()
+    .toLowerCase();
+  let mime = contentType;
+  if (mime === "image/jpg") mime = "image/jpeg";
+  const allowed = ["image/jpeg", "image/png", "image/webp", "image/gif"];
+  if (!allowed.includes(mime)) {
+    throw new Error("Remote URL did not return a supported image.");
+  }
+
+  const buffer = Buffer.from(await response.arrayBuffer());
+  if (!buffer.length) {
+    throw new Error("Remote image was empty.");
+  }
+  if (buffer.length > 12 * 1024 * 1024) {
+    throw new Error("Remote image is too large (max 12MB).");
+  }
+
+  return `data:${mime};base64,${buffer.toString("base64")}`;
+};
+
 const createNoteRecord = (payload, userId) => {
   const title = String(payload.title ?? "").trim();
   if (!title) {
@@ -8288,7 +8320,6 @@ const createNoteRecord = (payload, userId) => {
 
   const noteType = NOTE_TYPES.includes(payload.note_type) ? payload.note_type : "general";
   const placement = resolveNotePlacement({
-    topic_id: payload.topic_id ? Number(payload.topic_id) : null,
     subject_id: payload.subject_id ? Number(payload.subject_id) : null,
     notebook_id: payload.notebook_id ? Number(payload.notebook_id) : null,
     userId,
@@ -8346,18 +8377,8 @@ const updateNoteRecord = (noteId, payload, userId) => {
     }
     updates.note_type = payload.note_type;
   }
-  if (
-    payload.topic_id !== undefined ||
-    payload.subject_id !== undefined ||
-    payload.notebook_id !== undefined
-  ) {
+  if (payload.subject_id !== undefined || payload.notebook_id !== undefined) {
     const placement = resolveNotePlacement({
-      topic_id:
-        payload.topic_id !== undefined
-          ? payload.topic_id
-            ? Number(payload.topic_id)
-            : null
-          : existing.topic_id,
       subject_id:
         payload.subject_id !== undefined
           ? payload.subject_id
@@ -8425,6 +8446,73 @@ const deleteNoteRecord = (noteId, userId) => {
   }
 
   run(`DELETE FROM ${NOTES_TABLE} WHERE id = ? AND user_id = ?`, [noteId, userId]);
+  return { ok: true };
+};
+
+const deleteNotesMatching = (whereSql, params, userId) => {
+  const noteIds = all(
+    `SELECT id FROM ${NOTES_TABLE} WHERE user_id = ? AND (${whereSql})`,
+    [userId, ...params]
+  ).map((row) => row.id);
+  for (const noteId of noteIds) {
+    deleteNoteRecord(noteId, userId);
+  }
+};
+
+const deleteTopicRecord = (topicId, userId) => {
+  const topic = all(
+    `
+      SELECT t.*, nb.user_id
+      FROM ${NOTE_TOPICS_TABLE} t
+      JOIN ${NOTE_SUBJECTS_TABLE} s ON s.id = t.subject_id
+      JOIN ${NOTEBOOKS_TABLE} nb ON nb.id = s.notebook_id
+      WHERE t.id = ?
+      LIMIT 1
+    `,
+    [topicId]
+  )[0];
+  if (!topic || topic.user_id !== userId) throw new Error("Topic not found.");
+
+  deleteNotesMatching("topic_id = ?", [topicId], userId);
+  run(`DELETE FROM ${NOTE_TOPICS_TABLE} WHERE id = ?`, [topicId]);
+  return { ok: true };
+};
+
+const deleteSubjectRecord = (subjectId, userId) => {
+  const subject = all(
+    `
+      SELECT s.*, nb.user_id
+      FROM ${NOTE_SUBJECTS_TABLE} s
+      JOIN ${NOTEBOOKS_TABLE} nb ON nb.id = s.notebook_id
+      WHERE s.id = ?
+      LIMIT 1
+    `,
+    [subjectId]
+  )[0];
+  if (!subject || subject.user_id !== userId) throw new Error("Subject not found.");
+
+  run(`DELETE FROM ${NOTE_TOPICS_TABLE} WHERE subject_id = ?`, [subjectId]);
+  deleteNotesMatching("subject_id = ?", [subjectId], userId);
+  run(`DELETE FROM ${NOTE_SUBJECTS_TABLE} WHERE id = ?`, [subjectId]);
+  return { ok: true };
+};
+
+const deleteNotebookRecord = (notebookId, userId) => {
+  const notebook = all(
+    `SELECT * FROM ${NOTEBOOKS_TABLE} WHERE id = ? AND user_id = ? LIMIT 1`,
+    [notebookId, userId]
+  )[0];
+  if (!notebook) throw new Error("Notebook not found.");
+
+  const subjects = all(`SELECT id FROM ${NOTE_SUBJECTS_TABLE} WHERE notebook_id = ?`, [
+    notebookId,
+  ]);
+  for (const subject of subjects) {
+    deleteSubjectRecord(subject.id, userId);
+  }
+
+  deleteNotesMatching("notebook_id = ?", [notebookId], userId);
+  run(`DELETE FROM ${NOTEBOOKS_TABLE} WHERE id = ? AND user_id = ?`, [notebookId, userId]);
   return { ok: true };
 };
 
@@ -8528,76 +8616,12 @@ const updateSubjectRecord = (subjectId, payload, userId) => {
   return all(`SELECT * FROM ${NOTE_SUBJECTS_TABLE} WHERE id = ? LIMIT 1`, [subjectId])[0];
 };
 
-const createTopicRecord = (payload, userId) => {
-  const name = String(payload.name ?? "").trim();
-  if (!name) throw new Error("Topic name is required.");
-  if (!payload.subject_id) throw new Error("subject_id is required.");
-
-  resolveNotePlacement({
-    subject_id: Number(payload.subject_id),
-    userId,
-  });
-
-  if (payload.parent_topic_id) {
-    const parentTopic = all(
-      `
-        SELECT t.id, s.notebook_id, nb.user_id
-        FROM ${NOTE_TOPICS_TABLE} t
-        JOIN ${NOTE_SUBJECTS_TABLE} s ON s.id = t.subject_id
-        JOIN ${NOTEBOOKS_TABLE} nb ON nb.id = s.notebook_id
-        WHERE t.id = ? AND t.subject_id = ?
-        LIMIT 1
-      `,
-      [payload.parent_topic_id, payload.subject_id]
-    )[0];
-    if (!parentTopic || parentTopic.user_id !== userId) {
-      throw new Error("Parent topic not found.");
-    }
-  }
-
-  const result = insertAuditedRow(
-    NOTE_TOPICS_TABLE,
-    {
-      subject_id: Number(payload.subject_id),
-      parent_topic_id: payload.parent_topic_id ? Number(payload.parent_topic_id) : null,
-      name,
-      description: payload.description?.trim() || null,
-      sort_order: payload.sort_order ? Number(payload.sort_order) : 0,
-    },
-    userId
-  );
-
-  return all(`SELECT * FROM ${NOTE_TOPICS_TABLE} WHERE id = ? LIMIT 1`, [result.lastID])[0];
+const createTopicRecord = () => {
+  throw new Error("Topics have been removed. Add notes under a subject instead.");
 };
 
-const updateTopicRecord = (topicId, payload, userId) => {
-  const topic = all(
-    `
-      SELECT t.*, nb.user_id
-      FROM ${NOTE_TOPICS_TABLE} t
-      JOIN ${NOTE_SUBJECTS_TABLE} s ON s.id = t.subject_id
-      JOIN ${NOTEBOOKS_TABLE} nb ON nb.id = s.notebook_id
-      WHERE t.id = ?
-      LIMIT 1
-    `,
-    [topicId]
-  )[0];
-  if (!topic || topic.user_id !== userId) throw new Error("Topic not found.");
-
-  const updates = {};
-  if (payload.name !== undefined) {
-    const name = String(payload.name ?? "").trim();
-    if (!name) throw new Error("Topic name is required.");
-    updates.name = name;
-  }
-  if (payload.description !== undefined) updates.description = payload.description?.trim() || null;
-  if (payload.sort_order !== undefined) updates.sort_order = Number(payload.sort_order) || 0;
-
-  if (Object.keys(updates).length > 0) {
-    updateAuditedRow(NOTE_TOPICS_TABLE, updates, "id = ?", [topicId], userId);
-  }
-
-  return all(`SELECT * FROM ${NOTE_TOPICS_TABLE} WHERE id = ? LIMIT 1`, [topicId])[0];
+const updateTopicRecord = () => {
+  throw new Error("Topics have been removed. Add notes under a subject instead.");
 };
 
 const getNotesSummary = (userId) => {
@@ -10472,6 +10496,11 @@ export function sqliteApiPlugin() {
                 return;
               }
 
+              if (req.method === "DELETE" && notebookMatch) {
+                json(res, 200, deleteNotebookRecord(Number(notebookMatch[1]), actingUser.id));
+                return;
+              }
+
               if (req.method === "POST" && notesUrl.pathname === "/api/notes/subjects") {
                 const body = await readBody(req);
                 json(res, 200, { subject: createSubjectRecord(body, actingUser.id) });
@@ -10489,6 +10518,11 @@ export function sqliteApiPlugin() {
                 return;
               }
 
+              if (req.method === "DELETE" && subjectMatch) {
+                json(res, 200, deleteSubjectRecord(Number(subjectMatch[1]), actingUser.id));
+                return;
+              }
+
               if (req.method === "POST" && notesUrl.pathname === "/api/notes/topics") {
                 const body = await readBody(req);
                 json(res, 200, { topic: createTopicRecord(body, actingUser.id) });
@@ -10503,6 +10537,18 @@ export function sqliteApiPlugin() {
                   200,
                   { topic: updateTopicRecord(Number(topicMatch[1]), body, actingUser.id) }
                 );
+                return;
+              }
+
+              if (req.method === "DELETE" && topicMatch) {
+                json(res, 200, deleteTopicRecord(Number(topicMatch[1]), actingUser.id));
+                return;
+              }
+
+              if (req.method === "POST" && notesUrl.pathname === "/api/notes/localize-image") {
+                const body = await readBody(req);
+                const dataUrl = await localizeRemoteImageUrl(body.url);
+                json(res, 200, { data_url: dataUrl });
                 return;
               }
 

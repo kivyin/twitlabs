@@ -19,12 +19,13 @@ import { useBrowseReturn } from "../hooks/useBrowseReturn";
 import { buildForeignKeyOptionLabel } from "../utils/tableForm";
 import { buildUserOptions } from "../utils/userReferences";
 import {
+  getDefaultCashEntryMode,
   getDefaultLiabilityEntryMode,
-  getMoneyFieldHint,
   getSignedAmountClass,
   isLiabilityAccountType,
   isLineOfCreditAccountType,
   isLoanAccountType,
+  resolveCashTransactionAmount,
   resolveLiabilityTransactionAmount,
   validateCategorySignedAmount,
 } from "../utils/money";
@@ -93,6 +94,7 @@ function TransactionFormPage() {
   const [redirectToTransferId, setRedirectToTransferId] = useState(null);
   const [receiptPrefillNotice, setReceiptPrefillNotice] = useState("");
   const [liabilityEntryMode, setLiabilityEntryMode] = useState("payment");
+  const [cashEntryMode, setCashEntryMode] = useState("withdrawal");
 
   useEffect(() => {
     let active = true;
@@ -203,8 +205,11 @@ function TransactionFormPage() {
             transaction_date: transaction.transaction_date ?? "",
           });
           const accountTypeName = accountTypes[String(transaction.account_id)] ?? "";
+          const signedAmount = Number(transaction.amount);
           if (isLiabilityAccountType(accountTypeName)) {
-            setLiabilityEntryMode(Number(transaction.amount) < 0 ? "payment" : "charge");
+            setLiabilityEntryMode(signedAmount < 0 ? "payment" : "charge");
+          } else {
+            setCashEntryMode(signedAmount < 0 ? "withdrawal" : "deposit");
           }
           setReceiptPrefillNotice("");
 
@@ -213,7 +218,10 @@ function TransactionFormPage() {
             setSplitLines(
               transaction.splits.map((split) => ({
                 category_id: String(split.category_id),
-                amount: String(split.amount),
+                amount:
+                  split.amount === null || split.amount === undefined
+                    ? ""
+                    : String(Math.abs(Number(split.amount))),
               }))
             );
           }
@@ -230,7 +238,7 @@ function TransactionFormPage() {
             account_id: draft ? prefillAccountId || "" : prev.account_id || prefillAccountId,
             amount:
               draft?.amount !== undefined && draft?.amount !== null && draft?.amount !== ""
-                ? String(draft.amount)
+                ? String(Math.abs(Number(draft.amount)))
                 : prev.amount,
             description: draft?.description ? String(draft.description) : prev.description,
             transaction_date: draft?.transaction_date
@@ -239,6 +247,19 @@ function TransactionFormPage() {
             category_id: draft?.category_id ? String(draft.category_id) : prev.category_id,
           }));
           if (draft) {
+            const draftAmount = Number(draft.amount);
+            const categoryTypes = Object.fromEntries(
+              categories.map((row) => [String(row.id), row.category_type])
+            );
+            if (Number.isFinite(draftAmount) && draftAmount !== 0) {
+              setCashEntryMode(draftAmount < 0 ? "withdrawal" : "deposit");
+            } else {
+              setCashEntryMode(
+                getDefaultCashEntryMode(
+                  draft.category_id ? categoryTypes[String(draft.category_id)] : ""
+                )
+              );
+            }
             setReceiptPrefillNotice(
               prefillAccountId
                 ? "Prefilled from receipt — review and save. The receipt photo will attach automatically."
@@ -281,19 +302,17 @@ function TransactionFormPage() {
       : selectedAccountIsLoan
         ? "Enter a fee or added charge as a positive amount. This increases amount owed."
         : "Enter the charge/draw as a positive amount. This increases amount owed."
-    : getMoneyFieldHint("transactions", "amount", {
-        isTransfer: false,
-        categoryType: selectedCategoryType,
-        accountTypeName: selectedAccountType,
-      });
+    : cashEntryMode === "deposit"
+      ? "Enter the deposit as a positive amount. No minus key needed."
+      : "Enter the withdrawal as a positive amount. No minus key needed.";
   const previewNumeric = Number(formData.amount);
   const signedPreviewAmount =
-    selectedAccountIsLiability && formData.amount !== "" && Number.isFinite(previewNumeric)
-      ? (liabilityEntryMode === "payment" ? -1 : 1) * Math.abs(previewNumeric)
+    formData.amount !== "" && Number.isFinite(previewNumeric)
+      ? selectedAccountIsLiability
+        ? (liabilityEntryMode === "payment" ? -1 : 1) * Math.abs(previewNumeric)
+        : (cashEntryMode === "deposit" ? 1 : -1) * Math.abs(previewNumeric)
       : previewNumeric;
-  const amountClassName = getSignedAmountClass(
-    selectedAccountIsLiability ? signedPreviewAmount : formData.amount
-  );
+  const amountClassName = getSignedAmountClass(signedPreviewAmount);
   const transferPath = `/app/${appName}/transfers/new`;
   const transferState = formData.account_id
     ? { fromAccountId: String(formData.account_id), accountId: String(formData.account_id) }
@@ -317,11 +336,25 @@ function TransactionFormPage() {
         const nextType = accountTypeById[value] ?? "";
         if (isLiabilityAccountType(nextType)) {
           setLiabilityEntryMode(getDefaultLiabilityEntryMode(nextType));
+        } else {
+          setCashEntryMode(getDefaultCashEntryMode(categoryTypeById[prev.category_id] ?? ""));
+        }
+      }
+      if (name === "category_id") {
+        const accountType = accountTypeById[prev.account_id] ?? "";
+        if (!isLiabilityAccountType(accountType)) {
+          setCashEntryMode(getDefaultCashEntryMode(categoryTypeById[value] ?? ""));
         }
       }
       if (name === "payee_id" && value) {
         if (payeeDefaultCategoryById[value] && !prev.category_id) {
           next.category_id = payeeDefaultCategoryById[value];
+          const accountType = accountTypeById[prev.account_id] ?? "";
+          if (!isLiabilityAccountType(accountType)) {
+            setCashEntryMode(
+              getDefaultCashEntryMode(categoryTypeById[payeeDefaultCategoryById[value]] ?? "")
+            );
+          }
         }
 
         const payeeDescription = payeeDescriptionById[value] || "";
@@ -368,7 +401,7 @@ function TransactionFormPage() {
     const amount = selectedAccountIsLiability
       ? resolveLiabilityTransactionAmount(formData.amount, liabilityEntryMode)
       : validateCategorySignedAmount(
-          formData.amount,
+          resolveCashTransactionAmount(formData.amount, cashEntryMode),
           selectedCategoryType,
           selectedAccountType
         );
@@ -501,7 +534,7 @@ function TransactionFormPage() {
                 : selectedAccountIsLoc
                   ? "Choose Payment or Draw / charge. To move cash to a bank or pay a card, use Transfer."
                   : "Choose Payment or Charge, then enter a positive amount."
-              : "Use positive amounts for deposits and negative amounts for withdrawals."
+              : "Choose Deposit or Withdrawal, then enter a positive amount."
         }
       />
 
@@ -597,13 +630,40 @@ function TransactionFormPage() {
                         </button>
                       </div>
                     </fieldset>
-                  ) : formData.account_id ? (
-                    <p className="field-hint liability-entry-hint">
-                      Select a loan, credit card, or line of credit above to choose Payment vs Charge.
-                      To pay a loan from checking/savings, use{" "}
-                      <BrowseLink to={`/app/${appName}/transfers/new`}>Transfer</BrowseLink> instead.
-                    </p>
-                  ) : null}
+                  ) : (
+                    <fieldset className="liability-entry-fieldset">
+                      <legend>What kind of entry is this?</legend>
+                      <div className="liability-entry-mode" role="group" aria-label="Entry type">
+                        <button
+                          type="button"
+                          className={`liability-entry-mode-button${
+                            cashEntryMode === "deposit" ? " active" : ""
+                          }`}
+                          onClick={() => setCashEntryMode("deposit")}
+                        >
+                          Deposit
+                          <span>Adds money to the account</span>
+                        </button>
+                        <button
+                          type="button"
+                          className={`liability-entry-mode-button${
+                            cashEntryMode === "withdrawal" ? " active" : ""
+                          }`}
+                          onClick={() => setCashEntryMode("withdrawal")}
+                        >
+                          Withdrawal
+                          <span>Spends or removes money</span>
+                        </button>
+                      </div>
+                      {formData.account_id ? (
+                        <p className="field-hint liability-entry-hint">
+                          To move money between accounts or pay a loan/card, use{" "}
+                          <BrowseLink to={`/app/${appName}/transfers/new`}>Transfer</BrowseLink>{" "}
+                          instead.
+                        </p>
+                      ) : null}
+                    </fieldset>
+                  )}
 
                   <div className="checkbook-pay-row">
                     <label>
@@ -625,8 +685,9 @@ function TransactionFormPage() {
                       Amount
                       <input
                         type="number"
+                        inputMode="decimal"
                         step="0.01"
-                        min={selectedAccountIsLiability ? "0.01" : undefined}
+                        min="0.01"
                         value={formData.amount}
                         onChange={(event) => handleChange("amount", event.target.value)}
                         className={amountClassName || undefined}
@@ -635,13 +696,15 @@ function TransactionFormPage() {
                     </label>
                   </div>
                   {amountHint && <span className="field-hint">{amountHint}</span>}
-                  {selectedAccountIsLiability && formData.amount !== "" && Number.isFinite(signedPreviewAmount) ? (
+                  {formData.amount !== "" && Number.isFinite(signedPreviewAmount) ? (
                     <span className="field-hint">
                       Will post as{" "}
                       <strong className={amountClassName || undefined}>
                         {signedPreviewAmount.toFixed(2)}
-                      </strong>{" "}
-                      ({liabilityEntryMode === "payment" ? "reduces" : "increases"} amount owed).
+                      </strong>
+                      {selectedAccountIsLiability
+                        ? ` (${liabilityEntryMode === "payment" ? "reduces" : "increases"} amount owed).`
+                        : ` (${cashEntryMode === "deposit" ? "deposit" : "withdrawal"}).`}
                     </span>
                   ) : null}
 
@@ -756,7 +819,9 @@ function TransactionFormPage() {
                             </select>
                             <input
                               type="number"
+                              inputMode="decimal"
                               step="0.01"
+                              min="0.01"
                               value={line.amount}
                               onChange={(event) => updateSplitLine(index, "amount", event.target.value)}
                               placeholder="Amount"

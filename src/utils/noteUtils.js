@@ -19,10 +19,11 @@ export function stripHtml(html = "") {
     .trim();
 }
 
-export function notePreview(note) {
+export function notePreview(note, maxLength = 120) {
   const plain = note.content_plain || stripHtml(note.content_html);
   if (!plain) return "Empty note";
-  return plain.length > 120 ? `${plain.slice(0, 120)}…` : plain;
+  const limit = Number(maxLength) > 0 ? Number(maxLength) : 120;
+  return plain.length > limit ? `${plain.slice(0, limit)}…` : plain;
 }
 
 export function formatNoteDate(value) {
@@ -38,23 +39,6 @@ export function formatNoteDate(value) {
 }
 
 export function buildSelectionLabel(selection, tree = []) {
-  if (selection.topicId) {
-    for (const notebook of tree) {
-      for (const subject of notebook.subjects ?? []) {
-        const findTopic = (topics, path = []) => {
-          for (const topic of topics ?? []) {
-            const nextPath = [...path, topic.name];
-            if (topic.id === selection.topicId) return nextPath.join(" › ");
-            const nested = findTopic(topic.subtopics, nextPath);
-            if (nested) return nested;
-          }
-          return null;
-        };
-        const label = findTopic(subject.topics);
-        if (label) return `${notebook.name} › ${subject.name} › ${label}`;
-      }
-    }
-  }
   if (selection.subjectId) {
     for (const notebook of tree) {
       const subject = notebook.subjects?.find((item) => item.id === selection.subjectId);
@@ -81,21 +65,6 @@ function findInNotes(notes, noteId, path) {
   return null;
 }
 
-function findInTopics(topics, noteId, path) {
-  for (const topic of topics ?? []) {
-    const topicPath = [...path, `topic-${topic.id}`];
-    const inNotes = findInNotes(topic.notes, noteId, topicPath);
-    if (inNotes) {
-      return inNotes;
-    }
-    const inSubtopics = findInTopics(topic.subtopics, noteId, topicPath);
-    if (inSubtopics) {
-      return inSubtopics;
-    }
-  }
-  return null;
-}
-
 export function findNoteExpandKeys(tree, noteId) {
   for (const notebook of tree) {
     const base = [`notebook-${notebook.id}`];
@@ -110,12 +79,48 @@ export function findNoteExpandKeys(tree, noteId) {
       if (inSubject) {
         return inSubject;
       }
-
-      const inTopics = findInTopics(subject.topics, noteId, subjectPath);
-      if (inTopics) {
-        return inTopics;
-      }
     }
   }
   return [];
+}
+
+export function buildNotesBrowsePath(
+  appName = "notes",
+  { notebookId, subjectId, noteId, q } = {}
+) {
+  const params = new URLSearchParams();
+  if (notebookId) params.set("notebook", String(notebookId));
+  if (subjectId) params.set("subject", String(subjectId));
+  if (noteId) params.set("note", String(noteId));
+  if (q) params.set("q", String(q));
+  const query = params.toString();
+  return `/app/${appName}/browse${query ? `?${query}` : ""}`;
+}
+
+export function parseNotesBrowseParams(searchParams) {
+  const notebook = searchParams.get("notebook");
+  const subject = searchParams.get("subject");
+  const note = searchParams.get("note");
+  const q = searchParams.get("q") ?? "";
+
+  return {
+    notebookId: notebook ? Number(notebook) : null,
+    subjectId: subject ? Number(subject) : null,
+    noteId: note ? Number(note) : null,
+    q,
+  };
+}
+
+export function findNotebookInTree(tree, notebookId) {
+  return (tree ?? []).find((item) => item.id === notebookId) ?? null;
+}
+
+export function findSubjectInTree(tree, subjectId) {
+  for (const notebook of tree ?? []) {
+    const subject = (notebook.subjects ?? []).find((item) => item.id === subjectId);
+    if (subject) {
+      return { notebook, subject };
+    }
+  }
+  return null;
 }

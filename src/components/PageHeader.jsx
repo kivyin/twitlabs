@@ -1,10 +1,11 @@
-import { Fragment, useMemo } from "react";
+import { Fragment, useEffect, useMemo, useRef } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import FavoriteButton from "./FavoriteButton";
 import HelpButton from "./docs/HelpButton";
 import UserMenuButton from "./UserMenuButton";
 import VersionStatusIndicator from "./VersionStatusIndicator";
 import { LcarsMidBand } from "./LcarsShellChrome";
+import LcarsProgressLight from "./LcarsProgressLight";
 import { useAuth } from "../context/AuthContext";
 import { useBrowseStack } from "../context/BrowseStackContext";
 import { useTheme } from "../context/ThemeContext";
@@ -35,6 +36,7 @@ function PageHeader({
   const location = useLocation();
   const params = useParams();
   const navigate = useNavigate();
+  const commandsRef = useRef(null);
   const { logout, user } = useAuth();
   const autoHelp = usePageHelpFromPath(location.pathname, params);
   const resolvedHelp = help === false ? null : help ?? autoHelp;
@@ -44,6 +46,27 @@ function PageHeader({
   const backFallback = useMemo(() => resolveBackFallback(breadcrumbs), [breadcrumbs]);
   const displayName = user?.display_name || user?.username || "";
 
+  useEffect(() => {
+    const el = commandsRef.current;
+    if (!el) return undefined;
+
+    const sync = () => {
+      document.documentElement.style.setProperty(
+        "--page-header-sticky-offset",
+        `${el.offsetHeight}px`
+      );
+    };
+    const observer = new ResizeObserver(sync);
+    observer.observe(el);
+    sync();
+
+    return () => {
+      observer.disconnect();
+      document.documentElement.style.removeProperty("--page-header-sticky-offset");
+      document.documentElement.style.removeProperty("--page-header-height");
+    };
+  }, [actions]);
+
   const handleSignOut = async () => {
     await logout();
     navigate("/login", { replace: true });
@@ -51,8 +74,17 @@ function PageHeader({
 
   const commandActions = (
     <>
+      {actions}
       {favorite !== false && (
-        <FavoriteButton label={typeof title === "string" ? title : undefined} />
+        <FavoriteButton
+          label={
+            typeof favorite === "string"
+              ? favorite
+              : typeof title === "string"
+                ? title
+                : undefined
+          }
+        />
       )}
       {resolvedHelp && <HelpButton help={resolvedHelp} />}
       <VersionStatusIndicator className="page-header-version-menu" />
@@ -63,14 +95,13 @@ function PageHeader({
           onSignOut={handleSignOut}
         />
       ) : null}
-      {actions}
     </>
   );
 
   return (
     <>
       <header className={`page-header${isLcars ? " page-header-lcars" : ""}`}>
-        <div className="page-header-commands">
+        <div ref={commandsRef} className="page-header-commands page-header-commands--sticky">
           <div className="page-header-commands-start">
             {showBack ? (
               <button
@@ -97,6 +128,7 @@ function PageHeader({
               <span className="page-header-commands-spacer" aria-hidden="true" />
             )}
           </div>
+          {isLcars ? <LcarsProgressLight /> : null}
           <div className="page-header-commands-end page-actions">{commandActions}</div>
         </div>
 

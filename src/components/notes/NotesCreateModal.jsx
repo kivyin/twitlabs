@@ -2,6 +2,16 @@ import { useEffect, useRef, useState } from "react";
 import { NOTE_TYPES } from "../../utils/noteUtils";
 import NotesModal from "./NotesModal";
 
+function normalizeColorValue(value, fallback = "#0f766e") {
+  const raw = String(value ?? "").trim();
+  if (/^#[0-9a-fA-F]{6}$/.test(raw)) return raw.toLowerCase();
+  if (/^#[0-9a-fA-F]{3}$/.test(raw)) {
+    const [, r, g, b] = raw;
+    return `#${r}${r}${g}${g}${b}${b}`.toLowerCase();
+  }
+  return fallback;
+}
+
 const CREATE_VARIANTS = {
   notebook: {
     title: "New notebook",
@@ -15,7 +25,7 @@ const CREATE_VARIANTS = {
   },
   subject: {
     title: "New subject",
-    subtitle: "Subjects group related topics inside a notebook.",
+    subtitle: "Subjects group related notes inside a notebook.",
     nameLabel: "Subject name",
     namePlaceholder: "Meetings, Projects, Reference…",
     submitLabel: "Create subject",
@@ -23,25 +33,9 @@ const CREATE_VARIANTS = {
     showDescription: true,
     defaultColor: "#14b8a6",
   },
-  topic: {
-    title: "New topic",
-    subtitle: "Topics hold your notes within a subject.",
-    nameLabel: "Topic name",
-    namePlaceholder: "Q3 planning, API design…",
-    submitLabel: "Create topic",
-    showDescription: true,
-  },
-  subtopic: {
-    title: "New sub-topic",
-    subtitle: "Nest topics for deeper organization.",
-    nameLabel: "Sub-topic name",
-    namePlaceholder: "Research notes, Action items…",
-    submitLabel: "Create sub-topic",
-    showDescription: true,
-  },
   note: {
     title: "New note",
-    subtitle: "Create a note in the selected notebook, subject, or topic.",
+    subtitle: "Create a note in the selected notebook or subject.",
     nameLabel: "Note title",
     namePlaceholder: "Untitled note",
     submitLabel: "Create note",
@@ -66,6 +60,7 @@ const EDIT_VARIANTS = {
     showColor: true,
     showDescription: true,
     showArchive: true,
+    deleteLabel: "Delete notebook",
   },
   subject: {
     title: "Edit subject",
@@ -74,13 +69,8 @@ const EDIT_VARIANTS = {
     submitLabel: "Save subject",
     showColor: true,
     showDescription: true,
-  },
-  topic: {
-    title: "Edit topic",
-    subtitle: "Update the topic name or description.",
-    nameLabel: "Topic name",
-    submitLabel: "Save topic",
-    showDescription: true,
+    defaultColor: "#14b8a6",
+    deleteLabel: "Delete subject",
   },
 };
 
@@ -92,6 +82,7 @@ function NotesCreateModal({
   open,
   onClose,
   onSubmit,
+  onDelete,
   saving = false,
   error = "",
 }) {
@@ -100,23 +91,34 @@ function NotesCreateModal({
       ? EDIT_VARIANTS[variant] ?? EDIT_VARIANTS.notebook
       : CREATE_VARIANTS[variant] ?? CREATE_VARIANTS.note;
 
+  const fallbackColor = config.defaultColor ?? "#0f766e";
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
-  const [color, setColor] = useState(config.defaultColor ?? initialValues.color ?? "#0f766e");
+  const [color, setColor] = useState(normalizeColorValue(initialValues.color, fallbackColor));
   const [noteType, setNoteType] = useState("general");
   const [isArchived, setIsArchived] = useState(false);
   const inputRef = useRef(null);
 
   useEffect(() => {
-    if (!open) return;
-    setName(initialValues.name ?? "");
-    setDescription(initialValues.description ?? "");
-    setColor(initialValues.color ?? config.defaultColor ?? "#0f766e");
-    setNoteType(initialValues.note_type ?? "general");
-    setIsArchived(Boolean(initialValues.is_archived));
-    const timer = window.setTimeout(() => inputRef.current?.focus(), 50);
-    return () => window.clearTimeout(timer);
-  }, [open, initialValues, config.defaultColor, variant, mode]);
+    if (!open) return undefined;
+
+    let cancelled = false;
+    const syncTimer = window.setTimeout(() => {
+      if (cancelled) return;
+      setName(initialValues.name ?? "");
+      setDescription(initialValues.description ?? "");
+      setColor(normalizeColorValue(initialValues.color, fallbackColor));
+      setNoteType(initialValues.note_type ?? "general");
+      setIsArchived(Boolean(initialValues.is_archived));
+    }, 0);
+    const focusTimer = window.setTimeout(() => inputRef.current?.focus(), 50);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(syncTimer);
+      window.clearTimeout(focusTimer);
+    };
+  }, [open, initialValues, fallbackColor, variant, mode]);
 
   if (!open) {
     return null;
@@ -134,7 +136,7 @@ function NotesCreateModal({
     onSubmit({
       name: trimmed,
       description: config.showDescription ? description.trim() : undefined,
-      color: config.showColor ? color : undefined,
+      color: config.showColor ? normalizeColorValue(color, fallbackColor) : undefined,
       note_type: config.showType ? noteType : undefined,
       is_archived: config.showArchive ? isArchived : undefined,
     });
@@ -147,6 +149,16 @@ function NotesCreateModal({
       onClose={onClose}
       footer={
         <>
+          {mode === "edit" && onDelete && config.deleteLabel ? (
+            <button
+              type="button"
+              className="danger-button"
+              onClick={onDelete}
+              disabled={saving}
+            >
+              {config.deleteLabel}
+            </button>
+          ) : null}
           <button
             type="submit"
             form="notes-create-form"

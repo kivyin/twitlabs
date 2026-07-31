@@ -769,16 +769,16 @@ const DOC_APPS = {
     topics: {
       overview: {
         title: "Notes app overview",
-        summary: "Organize notes in notebooks, subjects, topics, and notes.",
+        summary: "Organize notes in notebooks, subjects, and notes.",
         sections: [
           section("Hierarchy", [
-            "Notebook → Subject → Topic (and sub-topics) → Note (and sub-notes).",
+            "Notebook → Subject → Note (and sub-notes).",
             "Use Browse for the full outline and editor.",
             "Use Recent when you remember working on something lately but not where it lives.",
           ]),
           section("Suggested workflow", [
             "Create a notebook per area of life or work.",
-            "Add subjects and topics as the outline grows.",
+            "Add subjects and notes as the outline grows.",
             "Write in the editor with rich text; switch to pen for sketches.",
             "Pin important notes; link a note to a task when it supports active work.",
           ]),
@@ -790,7 +790,7 @@ const DOC_APPS = {
         sections: [
           section("Outline", [
             "Browse and search the notebook tree.",
-            "Create notebooks, subjects, topics, and notes from the tree actions.",
+            "Create notebooks, subjects, and notes from the tree actions.",
             "Select a note to load it in the editor.",
           ]),
           section("Editor tools", [
@@ -825,14 +825,13 @@ const DOC_APPS = {
         ],
       },
       notebooks: {
-        title: "Notebooks, subjects, and topics",
+        title: "Notebooks and subjects",
         summary: "Structure above individual notes.",
         sections: [
           section("Create structure", [
             "Notebooks are the top level.",
             "Subjects sit under notebooks.",
-            "Topics (and sub-topics) sit under subjects.",
-            "Notes (and sub-notes) hang off topics.",
+            "Notes (and sub-notes) sit under subjects.",
           ]),
         ],
         fields: [

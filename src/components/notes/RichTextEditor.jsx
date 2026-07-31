@@ -1,4 +1,4 @@
-import { forwardRef, useEffect, useImperativeHandle, useMemo, useState } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import { Extension } from "@tiptap/core";
 import { EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
@@ -20,6 +20,13 @@ import { TableCell } from "@tiptap/extension-table-cell";
 import { TableHeader } from "@tiptap/extension-table-header";
 import Image from "@tiptap/extension-image";
 import Typography from "@tiptap/extension-typography";
+import { localizeNoteImage } from "../../api/notesApi";
+import {
+  htmlHasRemoteImages,
+  isImageFile,
+  localizeHtmlImages,
+  prepareImageFile,
+} from "../../utils/noteImages";
 import NotesUrlModal from "./NotesUrlModal";
 import { toolbarIcons } from "./tiptapToolbarIcons";
 
@@ -166,16 +173,59 @@ const RichTextEditor = forwardRef(function RichTextEditor(
   {
     value = "",
     onChange,
+    onImagesLocalized,
     placeholder = "Start writing...",
     showGrid = false,
     mixed = false,
     overlay = null,
     textActive = true,
+    readOnly = false,
   },
   ref
 ) {
   const [urlModal, setUrlModal] = useState(null);
   const [, setToolbarTick] = useState(0);
+  const editorRef = useRef(null);
+  const imageInputRef = useRef(null);
+  const localizeAttemptRef = useRef("");
+  const readOnlyRef = useRef(readOnly);
+  const textActiveRef = useRef(textActive);
+
+  useEffect(() => {
+    readOnlyRef.current = readOnly;
+  }, [readOnly]);
+
+  useEffect(() => {
+    textActiveRef.current = textActive;
+  }, [textActive]);
+
+  const localizeRemoteSrc = async (url) => {
+    const result = await localizeNoteImage(url);
+    return result.data_url;
+  };
+
+  const insertImageDataUrls = (editorInstance, dataUrls) => {
+    if (!editorInstance || !dataUrls.length) return;
+    for (const src of dataUrls) {
+      editorInstance.chain().focus().setImage({ src }).run();
+    }
+  };
+
+  const insertImageFiles = async (editorInstance, files) => {
+    const imageFiles = [...files].filter(isImageFile);
+    if (!editorInstance || !imageFiles.length) return;
+    const dataUrls = [];
+    for (const file of imageFiles) {
+      dataUrls.push(await prepareImageFile(file));
+    }
+    insertImageDataUrls(editorInstance, dataUrls);
+  };
+
+  const insertHtmlWithLocalImages = async (editorInstance, html) => {
+    if (!editorInstance || !html) return;
+    const { html: nextHtml } = await localizeHtmlImages(html, localizeRemoteSrc);
+    editorInstance.chain().focus().insertContent(nextHtml).run();
+  };
 
   const extensions = useMemo(
     () => [
@@ -225,7 +275,7 @@ const RichTextEditor = forwardRef(function RichTextEditor(
     immediatelyRender: false,
     extensions,
     content: value || "",
-    editable: textActive,
+    editable: Boolean(textActive) && !readOnly,
     editorProps: {
       attributes: {
         class: [
@@ -233,14 +283,56 @@ const RichTextEditor = forwardRef(function RichTextEditor(
           "tiptap-surface",
           mixed ? "rich-text-surface--mixed" : "",
           !mixed && showGrid ? "note-surface--grid" : "",
+          readOnly ? "rich-text-surface--readonly" : "",
         ]
           .filter(Boolean)
           .join(" "),
-        role: "textbox",
-        "aria-multiline": "true",
+        role: readOnly ? "article" : "textbox",
+        "aria-multiline": readOnly ? undefined : "true",
+        "aria-readonly": readOnly ? "true" : undefined,
+      },
+      handleClick: (_view, _pos, event) => {
+        if (!readOnlyRef.current) return false;
+        const link = event.target?.closest?.("a[href]");
+        if (!link) return false;
+        const href = link.getAttribute("href");
+        if (!href) return false;
+        event.preventDefault();
+        window.open(href, "_blank", "noopener,noreferrer");
+        return true;
+      },
+      handlePaste: (_view, event) => {
+        const ed = editorRef.current;
+        if (!ed || readOnlyRef.current || !textActiveRef.current) return false;
+
+        const files = [...(event.clipboardData?.files || [])].filter(isImageFile);
+        if (files.length) {
+          event.preventDefault();
+          void insertImageFiles(ed, files);
+          return true;
+        }
+
+        const html = event.clipboardData?.getData("text/html") || "";
+        if (htmlHasRemoteImages(html)) {
+          event.preventDefault();
+          void insertHtmlWithLocalImages(ed, html);
+          return true;
+        }
+
+        return false;
+      },
+      handleDrop: (_view, event) => {
+        const ed = editorRef.current;
+        if (!ed || readOnlyRef.current || !textActiveRef.current) return false;
+        const files = [...(event.dataTransfer?.files || [])].filter(isImageFile);
+        if (!files.length) return false;
+        event.preventDefault();
+        void insertImageFiles(ed, files);
+        return true;
       },
     },
     onUpdate: ({ editor: current }) => {
+      if (readOnlyRef.current) return;
       onChange?.(current.getHTML());
     },
     onSelectionUpdate: () => {
@@ -250,6 +342,8 @@ const RichTextEditor = forwardRef(function RichTextEditor(
       setToolbarTick((tick) => tick + 1);
     },
   });
+
+  editorRef.current = editor;
 
   useImperativeHandle(
     ref,
@@ -268,28 +362,8 @@ const RichTextEditor = forwardRef(function RichTextEditor(
 
   useEffect(() => {
     if (!editor) return;
-    editor.setEditable(Boolean(textActive));
-  }, [editor, textActive]);
-
-  useEffect(() => {
-    if (!editor) return;
-    editor.setOptions({
-      editorProps: {
-        attributes: {
-          class: [
-            "rich-text-surface",
-            "tiptap-surface",
-            mixed ? "rich-text-surface--mixed" : "",
-            !mixed && showGrid ? "note-surface--grid" : "",
-          ]
-            .filter(Boolean)
-            .join(" "),
-          role: "textbox",
-          "aria-multiline": "true",
-        },
-      },
-    });
-  }, [editor, mixed, showGrid]);
+    editor.setEditable(Boolean(textActive) && !readOnly);
+  }, [editor, textActive, readOnly]);
 
   useEffect(() => {
     if (!editor) return;
@@ -302,7 +376,34 @@ const RichTextEditor = forwardRef(function RichTextEditor(
     }
   }, [editor, value]);
 
-  const disabled = !editor || (!textActive && mixed);
+  useEffect(() => {
+    if (!editor) return;
+    if (!htmlHasRemoteImages(value)) return;
+    if (localizeAttemptRef.current === value) return;
+
+    let cancelled = false;
+    localizeAttemptRef.current = value;
+
+    (async () => {
+      try {
+        const { html, changed } = await localizeHtmlImages(value, localizeRemoteSrc);
+        if (cancelled || !changed) return;
+        editor.commands.setContent(html, { emitUpdate: false });
+        if (!readOnlyRef.current) {
+          onChange?.(html);
+        }
+        onImagesLocalized?.(html);
+      } catch {
+        // Keep remote URLs if localization fails.
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [editor, value, onChange, onImagesLocalized]);
+
+  const disabled = !editor || readOnly || (!textActive && mixed);
   const inTable = Boolean(editor?.isActive("table"));
   const currentColor = editor?.getAttributes("textStyle").color || "";
   const currentHighlight = editor?.getAttributes("highlight").color || "";
@@ -310,14 +411,34 @@ const RichTextEditor = forwardRef(function RichTextEditor(
   const currentFontSize = editor?.getAttributes("textStyle").fontSize || "";
   const currentBlock = getBlockValue(editor);
 
-  const handleUrlSubmit = (url) => {
+  const handleUrlSubmit = async (url) => {
     if (!editor) return;
     if (urlModal === "link") {
       editor.chain().focus().extendMarkRange("link").setLink({ href: url }).run();
       return;
     }
     if (urlModal === "image") {
-      editor.chain().focus().setImage({ src: url }).run();
+      if (url.startsWith("data:image/")) {
+        editor.chain().focus().setImage({ src: url }).run();
+        return;
+      }
+      try {
+        const dataUrl = await localizeRemoteSrc(url);
+        editor.chain().focus().setImage({ src: dataUrl }).run();
+      } catch {
+        editor.chain().focus().setImage({ src: url }).run();
+      }
+    }
+  };
+
+  const handleImageFileChange = async (event) => {
+    const files = [...(event.target.files || [])];
+    event.target.value = "";
+    if (!editor || !files.length) return;
+    try {
+      await insertImageFiles(editor, files);
+    } catch {
+      // Ignore invalid selections.
     }
   };
 
@@ -340,8 +461,9 @@ const RichTextEditor = forwardRef(function RichTextEditor(
   const stageClassName = [
     mixed ? "rich-text-stage" : "",
     mixed && showGrid ? "note-surface--grid" : "",
-    mixed && textActive ? "rich-text-stage--typing" : "",
-    mixed && !textActive ? "rich-text-stage--drawing" : "",
+    mixed && textActive && !readOnly ? "rich-text-stage--typing" : "",
+    mixed && !textActive && !readOnly ? "rich-text-stage--drawing" : "",
+    mixed && readOnly ? "rich-text-stage--readonly" : "",
   ]
     .filter(Boolean)
     .join(" ");
@@ -351,14 +473,19 @@ const RichTextEditor = forwardRef(function RichTextEditor(
       editor={editor}
       className="rich-text-editor-content"
       onMouseDown={() => {
-        if (!textActive || !editor) return;
+        if (readOnly || !textActive || !editor) return;
         editor.commands.focus();
       }}
     />
   );
 
   return (
-    <div className={`rich-text-editor tiptap-editor${mixed ? " rich-text-editor--mixed" : ""}`}>
+    <div
+      className={`rich-text-editor tiptap-editor${mixed ? " rich-text-editor--mixed" : ""}${
+        readOnly ? " rich-text-editor--readonly" : ""
+      }`}
+    >
+      {!readOnly && (
       <div className="tiptap-toolbar" role="toolbar" aria-label="TipTap formatting toolbar">
         <div className="tiptap-toolbar-group">
           <ToolbarButton
@@ -665,7 +792,11 @@ const RichTextEditor = forwardRef(function RichTextEditor(
           >
             {toolbarIcons.unlink}
           </ToolbarButton>
-          <ToolbarButton title="Insert image" disabled={disabled} onClick={() => setUrlModal("image")}>
+          <ToolbarButton
+            title="Insert image"
+            disabled={disabled}
+            onClick={() => setUrlModal("image")}
+          >
             {toolbarIcons.image}
           </ToolbarButton>
           <ToolbarButton
@@ -744,6 +875,7 @@ const RichTextEditor = forwardRef(function RichTextEditor(
           </>
         )}
       </div>
+      )}
 
       {mixed ? (
         <div className={stageClassName}>
@@ -772,12 +904,28 @@ const RichTextEditor = forwardRef(function RichTextEditor(
           onClose={() => setUrlModal(null)}
           onSubmit={handleUrlSubmit}
           title="Insert image"
-          subtitle="Paste an image URL. Base64 data URLs also work."
+          subtitle="Upload a file, paste a screenshot into the note, or provide an image URL. Images are stored in the note so they work offline."
           submitLabel="Insert image"
           inputLabel="Image URL"
           placeholder="https://example.com/image.png"
+          inputType="text"
+          initialValue=""
+          allowFileUpload
+          onFileSelected={async (file) => {
+            if (!editor) return;
+            await insertImageFiles(editor, [file]);
+          }}
         />
-      ) : null}    </div>
+      ) : null}
+
+      <input
+        ref={imageInputRef}
+        type="file"
+        accept="image/*"
+        hidden
+        onChange={handleImageFileChange}
+      />
+    </div>
   );
 });
 

@@ -57,6 +57,12 @@ export function updateNotebook(notebookId, data) {
   });
 }
 
+export function deleteNotebook(notebookId) {
+  return apiRequest(`/api/notes/notebooks/${notebookId}`, {
+    method: "DELETE",
+  });
+}
+
 export function createSubject(data) {
   return apiRequest("/api/notes/subjects", {
     method: "POST",
@@ -71,16 +77,16 @@ export function updateSubject(subjectId, data) {
   });
 }
 
-export function createTopic(data) {
-  return apiRequest("/api/notes/topics", {
-    method: "POST",
-    body: JSON.stringify(data),
+export function deleteSubject(subjectId) {
+  return apiRequest(`/api/notes/subjects/${subjectId}`, {
+    method: "DELETE",
   });
 }
 
-export function updateTopic(topicId, data) {
-  return apiRequest(`/api/notes/topics/${topicId}`, {
-    method: "PUT",
-    body: JSON.stringify(data),
+/** Download a remote image server-side and return a data URL for offline notes. */
+export function localizeNoteImage(url) {
+  return apiRequest("/api/notes/localize-image", {
+    method: "POST",
+    body: JSON.stringify({ url }),
   });
 }

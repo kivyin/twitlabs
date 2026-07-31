@@ -593,6 +593,8 @@
   font-size: 0.55rem;
   letter-spacing: 0.06em;
   text-transform: uppercase;
+  filter: brightness(0.82) saturate(0.95);
+  transition: filter 0.28s ease, box-shadow 0.28s ease;
 }
 
 [data-theme="lcars"] .sidebar-lcars .sidebar-mode-tab:hover {
@@ -603,6 +605,14 @@
 [data-theme="lcars"] .sidebar-lcars .sidebar-mode-tab.active {
   background: var(--lcars-orange);
   color: #1a1000;
+  filter: brightness(1.05);
+}
+
+[data-theme="lcars"] .sidebar-lcars .sidebar-mode-tab.lcars-pulse-hot {
+  filter: brightness(1.32) saturate(1.25);
+  box-shadow:
+    inset 0 0 14px color-mix(in srgb, #fff 34%, transparent),
+    0 0 12px color-mix(in srgb, var(--lcars-orange) 55%, transparent);
 }
 
 [data-theme="lcars"] .lcars-menu-cap {
@@ -712,6 +722,8 @@
   line-height: 1.15;
   text-align: center;
   text-transform: uppercase;
+  filter: brightness(0.82) saturate(0.95);
+  transition: filter 0.28s ease, box-shadow 0.28s ease;
 }
 
 [data-theme="lcars"] .sidebar-lcars .sidebar-group-row .sidebar-link {
@@ -751,6 +763,20 @@
   color: var(--lcars-nav-text, #1a1000);
   background: var(--lcars-nav-bg, var(--lcars-tan));
   box-shadow: inset 0 0 0 2px rgba(0, 0, 0, 0.3);
+}
+
+[data-theme="lcars"] .sidebar-lcars .sidebar-link.lcars-pulse-hot {
+  filter: brightness(1.32) saturate(1.25);
+  box-shadow:
+    inset 0 0 14px color-mix(in srgb, #fff 34%, transparent),
+    0 0 12px color-mix(in srgb, var(--lcars-nav-bg, var(--lcars-orange)) 55%, transparent);
+}
+
+[data-theme="lcars"] .sidebar-lcars .sidebar-link.active.lcars-pulse-hot {
+  box-shadow:
+    inset 0 0 0 2px rgba(0, 0, 0, 0.3),
+    inset 0 0 14px color-mix(in srgb, #fff 34%, transparent),
+    0 0 12px color-mix(in srgb, var(--lcars-nav-bg, var(--lcars-orange)) 55%, transparent);
 }
 
 [data-theme="lcars"] .sidebar-lcars .sidebar-group-toggle {
@@ -870,6 +896,60 @@
 
 [data-theme="lcars"] .page-header-commands-start {
   justify-content: flex-start;
+  flex: 0 0 auto;
+}
+
+[data-theme="lcars"] .page-header-commands-end {
+  margin-left: 0;
+  flex: 0 0 auto;
+}
+
+/* Scanner / progress lights under the viewer — bloom from center outward */
+[data-theme="lcars"] .lcars-progress-light {
+  flex: 1 1 auto;
+  min-width: 3.5rem;
+  max-width: 100%;
+  display: flex;
+  align-items: center;
+  align-self: stretch;
+  padding: 0 0.15rem;
+}
+
+[data-theme="lcars"] .lcars-progress-light-track {
+  position: relative;
+  width: 100%;
+  height: 0.62rem;
+  overflow: hidden;
+  background: #05070c;
+  border: 1px solid color-mix(in srgb, var(--lcars-tan) 30%, #000);
+  box-shadow: inset 0 0 8px rgba(0, 0, 0, 0.85);
+}
+
+[data-theme="lcars"] .lcars-progress-light-blob {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 1.45rem;
+  height: 0.34rem;
+  margin-top: -0.17rem;
+  border-radius: 999px;
+  background: radial-gradient(
+    ellipse at center,
+    #fff8e0 0%,
+    var(--lcars-gold) 35%,
+    var(--lcars-orange) 68%,
+    transparent 100%
+  );
+  box-shadow:
+    0 0 6px color-mix(in srgb, var(--lcars-orange) 90%, transparent),
+    0 0 14px color-mix(in srgb, var(--lcars-gold) 55%, transparent);
+  opacity: 0;
+  transform: translateX(-50%);
+  /* Position/on-state driven by shared LCARS pulse clock (JS). */
+}
+
+[data-theme="lcars"] .lcars-progress-light-blob.is-on {
+  opacity: 1;
 }
 
 [data-theme="lcars"] .browse-back-button {
@@ -1759,6 +1839,18 @@
   50% {
     filter: drop-shadow(0 0 28px color-mix(in srgb, var(--fed-gold) 45%, transparent));
     transform: scale(1.02);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-theme="lcars"] .sidebar-lcars .sidebar-link,
+  [data-theme="lcars"] .sidebar-lcars .sidebar-mode-tab {
+    filter: none;
+    transition: none;
+  }
+
+  [data-theme="lcars"] .sidebar-lcars .lcars-pulse-hot {
+    box-shadow: none;
   }
 }
 

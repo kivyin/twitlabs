@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, NavLink, useLocation } from "react-router-dom";
 import { Clock3, LayoutList, ListOrdered, Pencil, Star } from "lucide-react";
 import { getNavigation, groupNavigationItems } from "../api/navigationApi";
@@ -17,6 +17,7 @@ import {
   LCARS_DOCS_PALETTE,
   LCARS_HOME_PALETTE,
 } from "../utils/lcarsNavColors";
+import { subscribeLcarsPulse } from "../utils/lcarsPulseClock";
 import { applyNavLayout, getNavLayoutCatalog } from "../utils/navLayout";
 import { renderFavoriteIcon } from "../utils/favoriteIcons";
 import {
@@ -200,6 +201,7 @@ function Sidebar({
   const { resolvedTheme } = useTheme();
   const isLcars = resolvedTheme === "lcars";
   const location = useLocation();
+  const sidebarRef = useRef(null);
   const [navItems, setNavItems] = useState([]);
   const [brandSettingsOpen, setBrandSettingsOpen] = useState(false);
   const [editingFavorite, setEditingFavorite] = useState(null);
@@ -253,6 +255,45 @@ function Sidebar({
     collapseAllNavGroups?.();
   }, [collapseAllNavGroups]);
 
+  // LCARS: chase pulse down the rail, then back up — synced with header scanner.
+  useEffect(() => {
+    if (!isLcars) return undefined;
+    const root = sidebarRef.current;
+    if (!root) return undefined;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      return undefined;
+    }
+
+    const HOT = "lcars-pulse-hot";
+    const SELECTOR = ".sidebar-mode-tab, .sidebar-nav .sidebar-link";
+
+    const clearHot = () => {
+      root.querySelectorAll(`.${HOT}`).forEach((el) => el.classList.remove(HOT));
+    };
+
+    const unsubscribe = subscribeLcarsPulse((tick) => {
+      const items = Array.from(root.querySelectorAll(SELECTOR));
+      clearHot();
+      if (items.length === 0) return;
+
+      if (items.length === 1) {
+        items[0].classList.add(HOT);
+        return;
+      }
+
+      // Ping-pong index derived from the shared clock.
+      const cycle = 2 * (items.length - 1);
+      const phase = tick % cycle;
+      const index = phase <= items.length - 1 ? phase : cycle - phase;
+      items[index]?.classList.add(HOT);
+    });
+
+    return () => {
+      unsubscribe();
+      clearHot();
+    };
+  }, [isLcars, activeTab, appMains, adminMains, favorites, historyPaths]);
+
   const navItemClass = ({ isActive }) => `sidebar-link${isActive ? " active" : ""}`;
   const subItemClass = ({ isActive }) =>
     `sidebar-link sidebar-sublink${isActive ? " active" : ""}`;
@@ -267,7 +308,7 @@ function Sidebar({
 
   return (
     <>
-    <aside className={sidebarClassName}>
+    <aside ref={sidebarRef} className={sidebarClassName}>
       <div className="sidebar-header">
         <Link to="/" className="sidebar-brand" onClick={onNavigate} title={fullTitle}>
           <BrandMark />

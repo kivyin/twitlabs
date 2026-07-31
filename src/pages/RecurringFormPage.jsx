@@ -7,7 +7,12 @@ import { useAuth } from "../context/AuthContext";
 import { useBrowseReturn } from "../hooks/useBrowseReturn";
 import { buildForeignKeyOptionLabel } from "../utils/tableForm";
 import { buildUserOptions } from "../utils/userReferences";
-import { getMoneyFieldHint, getSignedAmountClass, validateCategorySignedAmount } from "../utils/money";
+import {
+  getDefaultCashEntryMode,
+  getSignedAmountClass,
+  resolveCashTransactionAmount,
+  validateCategorySignedAmount,
+} from "../utils/money";
 
 const FREQUENCY_OPTIONS = [
   { value: "weekly", label: "Weekly" },
@@ -45,6 +50,7 @@ function RecurringFormPage() {
   const [status, setStatus] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [cashEntryMode, setCashEntryMode] = useState("withdrawal");
 
   useEffect(() => {
     let active = true;
@@ -113,12 +119,16 @@ function RecurringFormPage() {
             throw new Error("Recurring bill not found.");
           }
 
+          const signedAmount = Number(row.amount);
           setFormData({
             user_id: row.user_id ? String(row.user_id) : "",
             account_id: row.account_id ? String(row.account_id) : "",
             payee_id: row.payee_id ? String(row.payee_id) : "",
             category_id: row.category_id ? String(row.category_id) : "",
-            amount: row.amount === null ? "" : String(row.amount),
+            amount:
+              row.amount === null || row.amount === undefined
+                ? ""
+                : String(Math.abs(signedAmount)),
             description: row.description ?? "",
             frequency: row.frequency ?? "monthly",
             day_of_month: row.day_of_month ? String(row.day_of_month) : "",
@@ -127,6 +137,7 @@ function RecurringFormPage() {
             next_due_date: row.next_due_date ?? "",
             is_active: Number(row.is_active) !== 0,
           });
+          setCashEntryMode(signedAmount < 0 ? "withdrawal" : "deposit");
         } else if (user?.id) {
           setFormData((prev) => ({ ...prev, user_id: String(user.id) }));
         }
@@ -144,8 +155,16 @@ function RecurringFormPage() {
   }, [isEdit, recordId, user?.id]);
 
   const selectedCategoryType = categoryTypeById[formData.category_id] ?? "";
-  const amountHint = getMoneyFieldHint("transactions", "amount", { categoryType: selectedCategoryType });
-  const amountClassName = getSignedAmountClass(formData.amount);
+  const amountHint =
+    cashEntryMode === "deposit"
+      ? "Enter the deposit as a positive amount. No minus key needed."
+      : "Enter the withdrawal as a positive amount. No minus key needed.";
+  const previewNumeric = Number(formData.amount);
+  const signedPreviewAmount =
+    formData.amount !== "" && Number.isFinite(previewNumeric)
+      ? (cashEntryMode === "deposit" ? 1 : -1) * Math.abs(previewNumeric)
+      : previewNumeric;
+  const amountClassName = getSignedAmountClass(signedPreviewAmount);
 
   const payload = useMemo(() => ({
     user_id: Number(formData.user_id),
@@ -164,6 +183,9 @@ function RecurringFormPage() {
 
   const handleChange = (name, value) => {
     setFormData((prev) => ({ ...prev, [name]: value }));
+    if (name === "category_id") {
+      setCashEntryMode(getDefaultCashEntryMode(categoryTypeById[value] ?? ""));
+    }
   };
 
   const handleSubmit = async (event) => {
@@ -173,7 +195,10 @@ function RecurringFormPage() {
     setStatus("");
 
     try {
-      const amount = validateCategorySignedAmount(formData.amount, selectedCategoryType);
+      const amount = validateCategorySignedAmount(
+        resolveCashTransactionAmount(formData.amount, cashEntryMode),
+        selectedCategoryType
+      );
       const savePayload = { ...payload, amount };
 
       if (isEdit) {
@@ -207,7 +232,7 @@ function RecurringFormPage() {
           { label: isEdit ? "Edit" : "New" },
         ]}
         title={isEdit ? "Edit recurring bill" : "New recurring bill"}
-        subtitle="Schedule repeating income or expenses and post them when due."
+        subtitle="Choose Deposit or Withdrawal, then enter a positive amount. No minus key needed on mobile."
       />
 
       <section className="panel">
@@ -268,17 +293,54 @@ function RecurringFormPage() {
               </select>
             </label>
 
+            <fieldset className="liability-entry-fieldset form-field-full">
+              <legend>What kind of entry is this?</legend>
+              <div className="liability-entry-mode" role="group" aria-label="Entry type">
+                <button
+                  type="button"
+                  className={`liability-entry-mode-button${
+                    cashEntryMode === "deposit" ? " active" : ""
+                  }`}
+                  onClick={() => setCashEntryMode("deposit")}
+                >
+                  Deposit
+                  <span>Income / money in</span>
+                </button>
+                <button
+                  type="button"
+                  className={`liability-entry-mode-button${
+                    cashEntryMode === "withdrawal" ? " active" : ""
+                  }`}
+                  onClick={() => setCashEntryMode("withdrawal")}
+                >
+                  Withdrawal
+                  <span>Expense / money out</span>
+                </button>
+              </div>
+            </fieldset>
+
             <label>
               Amount
               <input
                 type="number"
+                inputMode="decimal"
                 step="0.01"
+                min="0.01"
                 value={formData.amount}
                 onChange={(event) => handleChange("amount", event.target.value)}
                 className={amountClassName || undefined}
                 required
               />
               {amountHint && <span className="field-hint">{amountHint}</span>}
+              {formData.amount !== "" && Number.isFinite(signedPreviewAmount) ? (
+                <span className="field-hint">
+                  Will post as{" "}
+                  <strong className={amountClassName || undefined}>
+                    {signedPreviewAmount.toFixed(2)}
+                  </strong>{" "}
+                  ({cashEntryMode === "deposit" ? "deposit" : "withdrawal"}).
+                </span>
+              ) : null}
             </label>
 
             <label>

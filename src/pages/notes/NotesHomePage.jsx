@@ -2,7 +2,12 @@ import { Link } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { getNotes, getNotesSummary, getNotesTree } from "../../api/notesApi";
 import PageHeader from "../../components/PageHeader";
-import { formatNoteDate, getNoteTypeLabel, notePreview } from "../../utils/noteUtils";
+import {
+  buildNotesBrowsePath,
+  formatNoteDate,
+  getNoteTypeLabel,
+  notePreview,
+} from "../../utils/noteUtils";
 
 function NotesHomePage() {
   const appName = "notes";
@@ -35,7 +40,7 @@ function NotesHomePage() {
       <PageHeader
         breadcrumbs={[{ label: "Home", to: "/" }, { label: "Notes" }]}
         title="Notes"
-        subtitle="OneNote-style notebooks with subjects, topics, rich text, sub-notes, and task links."
+        subtitle="OneNote-style notebooks with subjects, rich text, sub-notes, and task links."
         actions={
           <Link to={`/app/${appName}/browse`} className="button-primary">
             Open Workspace
@@ -73,7 +78,7 @@ function NotesHomePage() {
               {notebooks.map((notebook) => (
                 <Link
                   key={notebook.id}
-                  to={`/app/${appName}/browse`}
+                  to={buildNotesBrowsePath(appName, { notebookId: notebook.id })}
                   className="notes-notebook-card"
                   style={{ borderColor: notebook.color }}
                 >

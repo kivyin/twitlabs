@@ -4,7 +4,6 @@ import {
   createNote,
   createNotebook,
   createSubject,
-  createTopic,
   getNotes,
   getNotesTree,
   updateNote,
@@ -12,21 +11,6 @@ import {
 import { NOTE_TYPES } from "../../utils/noteUtils";
 
 const CREATE_NEW = "__create_new__";
-
-function flattenTopics(topics = [], path = []) {
-  const rows = [];
-  for (const topic of topics) {
-    const nextPath = [...path, topic.name];
-    rows.push({
-      id: topic.id,
-      name: topic.name,
-      label: nextPath.join(" › "),
-      notes: topic.notes ?? [],
-    });
-    rows.push(...flattenTopics(topic.subtopics ?? [], nextPath));
-  }
-  return rows;
-}
 
 function TaskNotesPanel({ taskId, taskTitle = "", appName = "notes" }) {
   const [tree, setTree] = useState([]);
@@ -38,12 +22,10 @@ function TaskNotesPanel({ taskId, taskTitle = "", appName = "notes" }) {
 
   const [notebookId, setNotebookId] = useState("");
   const [subjectId, setSubjectId] = useState("");
-  const [topicId, setTopicId] = useState("");
   const [noteId, setNoteId] = useState("");
 
   const [newNotebookName, setNewNotebookName] = useState("");
   const [newSubjectName, setNewSubjectName] = useState("");
-  const [newTopicName, setNewTopicName] = useState("");
   const [newNoteTitle, setNewNoteTitle] = useState(taskTitle || "");
   const [noteType, setNoteType] = useState("general");
 
@@ -96,19 +78,8 @@ function TaskNotesPanel({ taskId, taskTitle = "", appName = "notes" }) {
     () => subjects.find((item) => String(item.id) === String(subjectId)) ?? null,
     [subjectId, subjects]
   );
-  const topics = useMemo(
-    () => flattenTopics(selectedSubject?.topics ?? []),
-    [selectedSubject]
-  );
-  const selectedTopic = useMemo(
-    () => topics.find((item) => String(item.id) === String(topicId)) ?? null,
-    [topicId, topics]
-  );
 
   const placementNotes = useMemo(() => {
-    if (selectedTopic) {
-      return selectedTopic.notes ?? [];
-    }
     if (selectedSubject) {
       return selectedSubject.notes ?? [];
     }
@@ -116,7 +87,7 @@ function TaskNotesPanel({ taskId, taskTitle = "", appName = "notes" }) {
       return selectedNotebook.notes ?? [];
     }
     return [];
-  }, [selectedNotebook, selectedSubject, selectedTopic]);
+  }, [selectedNotebook, selectedSubject]);
 
   const linkableNotes = useMemo(
     () =>
@@ -128,34 +99,23 @@ function TaskNotesPanel({ taskId, taskTitle = "", appName = "notes" }) {
 
   const creatingNotebook = notebookId === CREATE_NEW;
   const creatingSubject = subjectId === CREATE_NEW;
-  const creatingTopic = topicId === CREATE_NEW;
   const creatingNote = !noteId || noteId === CREATE_NEW;
 
   const handleNotebookChange = (value) => {
     setNotebookId(value);
     setSubjectId("");
-    setTopicId("");
     setNoteId("");
     setNewSubjectName("");
-    setNewTopicName("");
   };
 
   const handleSubjectChange = (value) => {
     setSubjectId(value);
-    setTopicId("");
-    setNoteId("");
-    setNewTopicName("");
-  };
-
-  const handleTopicChange = (value) => {
-    setTopicId(value);
     setNoteId("");
   };
 
   const ensurePlacement = async () => {
     let resolvedNotebookId = notebookId;
     let resolvedSubjectId = subjectId;
-    let resolvedTopicId = topicId;
 
     if (creatingNotebook) {
       const name = newNotebookName.trim();
@@ -182,30 +142,11 @@ function TaskNotesPanel({ taskId, taskTitle = "", appName = "notes" }) {
       resolvedSubjectId = String(result.subject.id);
     }
 
-    if (creatingTopic) {
-      if (!resolvedSubjectId || resolvedSubjectId === CREATE_NEW) {
-        throw new Error("Select or create a subject before creating a topic.");
-      }
-      const name = newTopicName.trim();
-      if (!name) {
-        throw new Error("Enter a topic name.");
-      }
-      const result = await createTopic({
-        subject_id: Number(resolvedSubjectId),
-        name,
-      });
-      resolvedTopicId = String(result.topic.id);
-    }
-
     return {
       notebook_id: Number(resolvedNotebookId),
       subject_id:
         resolvedSubjectId && resolvedSubjectId !== CREATE_NEW
           ? Number(resolvedSubjectId)
-          : null,
-      topic_id:
-        resolvedTopicId && resolvedTopicId !== CREATE_NEW
-          ? Number(resolvedTopicId)
           : null,
     };
   };
@@ -223,7 +164,6 @@ function TaskNotesPanel({ taskId, taskTitle = "", appName = "notes" }) {
           task_id: Number(taskId),
           notebook_id: placement.notebook_id,
           subject_id: placement.subject_id,
-          topic_id: placement.topic_id,
         });
         setStatus("Existing note linked to this task.");
       } else {
@@ -234,18 +174,15 @@ function TaskNotesPanel({ taskId, taskTitle = "", appName = "notes" }) {
           task_id: Number(taskId),
           notebook_id: placement.notebook_id,
           subject_id: placement.subject_id,
-          topic_id: placement.topic_id,
         });
         setStatus("Note created and linked to this task.");
       }
 
       setNotebookId("");
       setSubjectId("");
-      setTopicId("");
       setNoteId("");
       setNewNotebookName("");
       setNewSubjectName("");
-      setNewTopicName("");
       setNewNoteTitle(taskTitle || "");
       await refresh();
     } catch (saveError) {
@@ -286,7 +223,7 @@ function TaskNotesPanel({ taskId, taskTitle = "", appName = "notes" }) {
         <div>
           <h2>Notes</h2>
           <p className="subtext">
-            Create or link a note in a notebook. You can also create a subject or topic if needed.
+            Create or link a note in a notebook. You can also create a subject if needed.
           </p>
         </div>
         <Link className="linkish-button" to={`/app/${appName}/browse`}>
@@ -313,7 +250,7 @@ function TaskNotesPanel({ taskId, taskTitle = "", appName = "notes" }) {
                     {note.title || "Untitled note"}
                   </Link>
                   <p className="subtext">
-                    {[note.notebook_name, note.subject_name, note.topic_name]
+                    {[note.notebook_name, note.subject_name]
                       .filter(Boolean)
                       .join(" › ") || "Notes"}
                   </p>
@@ -391,37 +328,6 @@ function TaskNotesPanel({ taskId, taskTitle = "", appName = "notes" }) {
                 value={newSubjectName}
                 onChange={(event) => setNewSubjectName(event.target.value)}
                 placeholder="Projects, Meetings…"
-              />
-            </label>
-          ) : (
-            <span />
-          )}
-
-          <label>
-            Topic
-            <select
-              value={topicId}
-              onChange={(event) => handleTopicChange(event.target.value)}
-              disabled={!subjectId}
-            >
-              <option value="">No topic (subject level)</option>
-              {topics.map((topic) => (
-                <option key={topic.id} value={topic.id}>
-                  {topic.label}
-                </option>
-              ))}
-              <option value={CREATE_NEW}>+ Create new topic…</option>
-            </select>
-          </label>
-
-          {creatingTopic ? (
-            <label>
-              New topic name
-              <input
-                type="text"
-                value={newTopicName}
-                onChange={(event) => setNewTopicName(event.target.value)}
-                placeholder="Planning, Research…"
               />
             </label>
           ) : (

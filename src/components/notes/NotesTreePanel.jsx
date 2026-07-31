@@ -103,97 +103,6 @@ function NoteOutlineNodes({
   });
 }
 
-function TopicOutlineNodes({
-  topics,
-  notebookId,
-  subjectId,
-  selection,
-  selectedNoteId,
-  collapsedKeys,
-  onToggleCollapse,
-  onSelect,
-  onSelectNote,
-  onCreate,
-  onEdit,
-  depth = 2,
-}) {
-  return topics.map((topic) => {
-    const key = `topic-${topic.id}`;
-    const subtopics = topic.subtopics ?? [];
-    const topicNotes = topic.notes ?? [];
-    const hasChildren = subtopics.length > 0 || topicNotes.length > 0;
-    const expanded = !collapsedKeys.has(key);
-    const isActive = selection.topicId === topic.id && !selectedNoteId;
-
-    return (
-      <li key={topic.id} className="notes-outline-node" data-depth={depth}>
-        <div className={`notes-outline-row${isActive ? " active" : ""}`}>
-          <button
-            type="button"
-            className={`notes-outline-toggle${hasChildren ? "" : " placeholder"}`}
-            aria-label={expanded ? "Collapse topic" : "Expand topic"}
-            aria-expanded={hasChildren ? expanded : undefined}
-            onClick={() => hasChildren && onToggleCollapse(key)}
-            disabled={!hasChildren}
-          >
-            {hasChildren ? <ChevronIcon expanded={expanded} /> : null}
-          </button>
-
-          <button
-            type="button"
-            className="notes-outline-label"
-            onClick={() =>
-              onSelect({ notebookId, subjectId, topicId: topic.id })
-            }
-          >
-            <span className="notes-outline-text">{topic.name}</span>
-          </button>
-
-          <OutlineActions
-            addTitle="Add sub-topic"
-            editTitle="Edit topic"
-            onAdd={() => onCreate("subtopic", { subjectId, parentTopicId: topic.id })}
-            onEdit={() =>
-              onEdit("topic", {
-                id: topic.id,
-                name: topic.name,
-                description: topic.description ?? "",
-              })
-            }
-          />
-        </div>
-
-        {hasChildren && expanded && (
-          <ul className="notes-outline-children">
-            <TopicOutlineNodes
-              topics={subtopics}
-              notebookId={notebookId}
-              subjectId={subjectId}
-              selection={selection}
-              selectedNoteId={selectedNoteId}
-              collapsedKeys={collapsedKeys}
-              onToggleCollapse={onToggleCollapse}
-              onSelect={onSelect}
-              onSelectNote={onSelectNote}
-              onCreate={onCreate}
-              onEdit={onEdit}
-              depth={depth + 1}
-            />
-            <NoteOutlineNodes
-              notes={topicNotes}
-              depth={depth + 1}
-              selectedNoteId={selectedNoteId}
-              collapsedKeys={collapsedKeys}
-              onToggleCollapse={onToggleCollapse}
-              onSelectNote={onSelectNote}
-            />
-          </ul>
-        )}
-      </li>
-    );
-  });
-}
-
 function NotesSearchResults({ results, selectedNoteId, onSelectNote }) {
   if (results.length === 0) {
     return <p className="subtext notes-sidebar-empty">No notes match your search.</p>;
@@ -333,12 +242,22 @@ function NotesTreePanel({
             const notebookActive =
               selection.notebookId === notebook.id &&
               !selection.subjectId &&
-              !selection.topicId &&
               !selectedNoteId;
 
             return (
-              <li key={notebook.id} className="notes-outline-node" data-depth="0">
-                <div className={`notes-outline-row notes-outline-row-notebook${notebookActive ? " active" : ""}`}>
+              <li
+                key={notebook.id}
+                className="notes-outline-node"
+                data-depth="0"
+                style={
+                  notebook.color
+                    ? { "--note-tab-color": notebook.color }
+                    : undefined
+                }
+              >
+                <div
+                  className={`notes-outline-row notes-outline-row-notebook${notebookActive ? " active" : ""}`}
+                >
                   <button
                     type="button"
                     className={`notes-outline-toggle${hasChildren ? "" : " placeholder"}`}
@@ -354,7 +273,7 @@ function NotesTreePanel({
                     type="button"
                     className="notes-outline-label"
                     onClick={() =>
-                      onSelect({ notebookId: notebook.id, subjectId: null, topicId: null })
+                      onSelect({ notebookId: notebook.id, subjectId: null })
                     }
                   >
                     <span className="notes-outline-text">{notebook.name}</span>
@@ -380,16 +299,26 @@ function NotesTreePanel({
                   <ul className="notes-outline-children">
                     {subjects.map((subject) => {
                       const subjectKey = `subject-${subject.id}`;
-                      const topics = subject.topics ?? [];
                       const subjectNotes = subject.notes ?? [];
-                      const subjectHasChildren = topics.length > 0 || subjectNotes.length > 0;
+                      const subjectHasChildren = subjectNotes.length > 0;
                       const subjectExpanded = !collapsedKeys.has(subjectKey);
                       const subjectActive =
-                        selection.subjectId === subject.id && !selection.topicId && !selectedNoteId;
+                        selection.subjectId === subject.id && !selectedNoteId;
 
                       return (
-                        <li key={subject.id} className="notes-outline-node" data-depth="1">
-                          <div className={`notes-outline-row${subjectActive ? " active" : ""}`}>
+                        <li
+                          key={subject.id}
+                          className="notes-outline-node"
+                          data-depth="1"
+                          style={
+                            subject.color
+                              ? { "--note-tab-color": subject.color }
+                              : undefined
+                          }
+                        >
+                          <div
+                            className={`notes-outline-row notes-outline-row-subject${subjectActive ? " active" : ""}`}
+                          >
                             <button
                               type="button"
                               className={`notes-outline-toggle${subjectHasChildren ? "" : " placeholder"}`}
@@ -408,7 +337,6 @@ function NotesTreePanel({
                                 onSelect({
                                   notebookId: notebook.id,
                                   subjectId: subject.id,
-                                  topicId: null,
                                 })
                               }
                             >
@@ -416,10 +344,10 @@ function NotesTreePanel({
                             </button>
 
                             <OutlineActions
-                              addTitle="Add topic"
+                              addTitle="Add note"
                               editTitle="Edit subject"
                               onAdd={() =>
-                                onCreate("topic", {
+                                onCreate("note", {
                                   notebookId: notebook.id,
                                   subjectId: subject.id,
                                 })
@@ -437,19 +365,6 @@ function NotesTreePanel({
 
                           {subjectHasChildren && subjectExpanded && (
                             <ul className="notes-outline-children">
-                              <TopicOutlineNodes
-                                topics={topics}
-                                notebookId={notebook.id}
-                                subjectId={subject.id}
-                                selection={selection}
-                                selectedNoteId={selectedNoteId}
-                                collapsedKeys={collapsedKeys}
-                                onToggleCollapse={toggleCollapse}
-                                onSelect={onSelect}
-                                onSelectNote={onSelectNote}
-                                onCreate={onCreate}
-                                onEdit={onEdit}
-                              />
                               <NoteOutlineNodes
                                 notes={subjectNotes}
                                 depth={2}
