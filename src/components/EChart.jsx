@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import * as echarts from "echarts";
 import { useTheme } from "../context/ThemeContext";
+import { applyEchartsTheme, readChartThemeTokens } from "../utils/chartTheme";
 
 /**
  * Thin wrapper around Apache ECharts that handles init, disposal,
@@ -32,20 +33,12 @@ function EChart({ option, height = 260, style }) {
 
   useEffect(() => {
     const chart = chartRef.current;
-    if (!chart || !option) return;
+    const container = containerRef.current;
+    if (!chart || !option || !container) return;
 
-    // Pull the current text color from CSS so charts follow the theme.
-    const computed = getComputedStyle(containerRef.current);
-    const textColor = computed.color || "#888";
-
-    chart.setOption(
-      {
-        backgroundColor: "transparent",
-        textStyle: { color: textColor, fontFamily: computed.fontFamily },
-        ...option,
-      },
-      { notMerge: true }
-    );
+    const tokens = readChartThemeTokens(container);
+    const themedOption = applyEchartsTheme(option, tokens);
+    chart.setOption(themedOption, { notMerge: true });
   }, [option, resolvedTheme]);
 
   return (
@@ -53,6 +46,7 @@ function EChart({ option, height = 260, style }) {
       ref={containerRef}
       className="echart-container"
       style={{ width: "100%", height, ...style }}
+      data-chart-theme={resolvedTheme}
     />
   );
 }

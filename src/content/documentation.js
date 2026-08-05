@@ -192,7 +192,7 @@ const DOC_APPS = {
         summary: "After sign-in, the home page lists every application your roles allow.",
         sections: [
           section("How it works", [
-            "Each card opens an application (Budget, Tasks, Notes, Decision Picker, Site Tracker, and others assigned to you).",
+            "Each card opens an application (Budget, Tasks, Notes, Decision Picker, Site Tracker, Training, Calendar, and others assigned to you).",
             "Administrators see every registered application.",
             "Use the left sidebar to move between apps without returning home.",
             "Open Documentation from the sidebar for field-level and process help.",
@@ -904,9 +904,157 @@ const DOC_APPS = {
     },
   },
 
+  training: {
+    label: "Training",
+    description: "Log workouts, routines, strength progress, and body measurements.",
+    topics: {
+      overview: {
+        title: "Training overview",
+        summary: "Strong/Hevy-style lifting log with routines, rest timer, RPE, supersets, and progress.",
+        sections: [
+          section("What you can do", [
+            "Start a workout empty or from a routine.",
+            "Use AI Coach to turn three goals into a 5–6 week day-by-day plan (or start a Daily HIIT).",
+            "Log strength sets with weight, reps, optional RPE, and warmup flags.",
+            "Log Cardio exercises with minutes and optional distance (intervals instead of sets).",
+            "Use rest timer, supersets, and previous-session values while logging.",
+            "Review history, estimated 1RM / cardio duration progress, and body measurements.",
+          ]),
+          section("Access", [
+            "Grant the Training user role under Administration → Users.",
+            "System admins see Training and can switch athletes in the page header.",
+            "Non-admins only see and edit their own training data.",
+          ]),
+        ],
+      },
+      workout: {
+        title: "Live workout",
+        summary: "Log sets between rests.",
+        sections: [
+          section("Logging", [
+            "Tap Done on a set to mark it complete and start the rest timer.",
+            "On mobile, rest opens full-screen; End rest / Close returns to the workout early.",
+            "Cardio items (muscle group Cardio) use Mins and optional Distance instead of Weight/Reps.",
+            "Set matching SS# values to group supersets.",
+            "Finish saves the session; Abandon marks it abandoned.",
+            "Open a completed workout from History to edit sets, cardio minutes, or exercises.",
+          ]),
+        ],
+      },
+      coach: {
+        title: "AI Coach",
+        summary: "Gemini-powered multi-week plans and daily HIIT from your goals and history.",
+        sections: [
+          section("Goals & plans", [
+            "Enter three training goals and save them (stored per athlete).",
+            "Generate 5–6 week plan builds a day-by-day block (training + rest days) and saves each training day as its own routine.",
+            "You can regenerate anytime — each run creates a new set of routines.",
+            "AI only picks exercises from your library and factors in recent workouts and PRs.",
+          ]),
+          section("Daily HIIT", [
+            "Generate Daily HIIT / WOD builds a short CrossFit-style session you can preview first.",
+            "Regenerate until you like it, then Start this WOD (requires no active workout).",
+          ]),
+          section("Setup", [
+            "Requires GEMINI_API_KEY in the server .env file (same key as receipt scanning).",
+          ]),
+        ],
+      },
+      routines: {
+        title: "Routines",
+        summary: "Reusable templates with target sets/reps/weight or cardio minutes.",
+        sections: [
+          section("Tips", [
+            "Add exercises from the library.",
+            "Cardio lines use intervals, minutes, and optional distance targets.",
+            "Use the same SS# on two lines to mark a planned superset.",
+            "Start a routine from the Routines list or the Training dashboard.",
+          ]),
+        ],
+      },
+      exercises: {
+        title: "Exercise library",
+        summary: "Seeded lifts plus your custom exercises.",
+        sections: [
+          section("Custom exercises", [
+            "Add movements that are not in the built-in library.",
+            "Set muscle group to Cardio for duration-based logging, or Martial arts for striking/grappling drills.",
+            "Only custom exercises can be edited or deleted.",
+          ]),
+        ],
+      },
+      history: {
+        title: "History",
+        summary: "Browse completed and abandoned sessions.",
+        sections: [
+          section("Details", [
+            "Open a session to review every exercise and set.",
+          ]),
+        ],
+      },
+      progress: {
+        title: "Progress",
+        summary: "PRs and estimated 1RM trends.",
+        sections: [
+          section("Metrics", [
+            "Estimated 1RM uses the Epley formula from completed working sets.",
+            "Overview charts show weekly volume, top lifts by best e1RM, and volume by muscle group.",
+            "Pick an exercise for e1RM trend and session volume charts.",
+          ]),
+        ],
+      },
+      measurements: {
+        title: "Body measurements",
+        summary: "Weight and optional tape measures over time.",
+        sections: [
+          section("Logging", [
+            "Enter body weight and optional waist, chest, arms, hips, thighs.",
+            "History lists newest first; a body-weight line chart appears when you have multiple entries.",
+          ]),
+        ],
+      },
+    },
+  },
+
+  calendar: {
+    label: "Calendar",
+    description: "Shared schedule for events and work time frames.",
+    topics: {
+      overview: {
+        title: "Calendar overview",
+        summary: "Day, week, and month views for timed events, including overnight shifts.",
+        sections: [
+          section("What you can do", [
+            "View a shared calendar of events with start and end date/times.",
+            "Create events such as “Keith works” from 5:00 PM to 2:00 AM the next day.",
+            "Assign each event to a person (Hub user), set a color, and add notes.",
+            "Set events to repeat daily, weekly, every 2 weeks, monthly, or yearly (birthdays).",
+            "Optionally set a Repeat until date; leave blank for ongoing series.",
+            "Switch between Day, Week, and Month. Tap an empty time slot to add an event.",
+            "Editing or deleting a repeating event updates the whole series.",
+            "Open Shopping for named shopping lists: add/remove items, check purchased (strikethrough), close lists, and move items between lists.",
+          ]),
+          section("Access roles", [
+            "Calendar user — add, edit, and delete events.",
+            "Calendar view — read-only full-screen calendar for touch displays; login lands on the calendar.",
+            "System Admin — full edit access like Calendar user.",
+            "Assign roles under Administration → Users.",
+          ]),
+          section("Full-screen calendar", [
+            "Calendar always opens full screen with no left navigation.",
+            "Use ← Back to return to the workspace home (Calendar user / admin).",
+            "Calendar view accounts see Sign out instead (kiosk / touch display).",
+            "Buttons and time slots use large tap targets.",
+            "Use Prev / Today / Next to move the range; tap an event to see details.",
+          ]),
+        ],
+      },
+    },
+  },
+
   admin: {
     label: "Administration",
-    description: "Users, schema dictionary, navigation, deletes, logs, zero boot, and SQL tools.",
+    description: "Users, schema dictionary, navigation, deletes, logs, backup, zero boot, and SQL tools.",
     topics: {
       overview: {
         title: "Administration overview",
@@ -919,6 +1067,7 @@ const DOC_APPS = {
             "Navigation — sidebar structure.",
             "Deleted records — restore soft-deleted rows.",
             "Error logs — inspect client and server errors.",
+            "Backup — export or import the full database as JSON.",
             "Zero Boot — factory-reset user data while keeping out-of-box configuration.",
             "IDE — run SQL against the database (read-only by default; escalate for emergency writes).",
           ]),
@@ -1070,6 +1219,27 @@ const DOC_APPS = {
           field("message", "Message", "Short error summary."),
         ],
       },
+      backup: {
+        title: "Backup",
+        summary: "Export all tables to JSON, or replace the database from a previous export.",
+        sections: [
+          section("When to use", [
+            "Move data from one Hub install or machine to another.",
+            "Keep an offline backup before risky changes or Zero Boot.",
+          ]),
+          section("Export all", [
+            "Open Administration → Backup and choose Export all.",
+            "The download is a hub-full-backup JSON file with every application table and row.",
+            "User password hashes and Site Tracker secrets are included — store the file securely.",
+            "Attachment and account image files under data/ are not inside the JSON; copy those folders separately if needed.",
+          ]),
+          section("Import all", [
+            "Choose a hub-full-backup JSON file from a matching app schema.",
+            "Type IMPORT and confirm. Every current table is cleared, then rows are inserted in foreign-key order.",
+            "If your username exists in the backup you stay signed in; otherwise you must sign in again.",
+          ]),
+        ],
+      },
       "zero-boot": {
         title: "Zero Boot",
         summary: "Factory-reset user data while keeping the root admin and out-of-box configuration.",
@@ -1086,7 +1256,7 @@ const DOC_APPS = {
           ]),
           section("What is kept or restored", [
             "Root admin user and system-admin role.",
-            "Budget, Tasks, Notes, and Decision Picker applications.",
+            "Budget, Tasks, Notes, Decision Picker, Site Tracker, Training, and Calendar applications.",
             "Default account types and default income/expense categories.",
             "Dictionary metadata and standard navigation.",
             "Built-in reports that ship with the product.",

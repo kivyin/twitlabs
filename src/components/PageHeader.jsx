@@ -29,6 +29,7 @@ function PageHeader({
   subtitle,
   actions,
   meta = null,
+  footer = null,
   help,
   favorite = true,
   showBack = true,
@@ -165,6 +166,7 @@ function PageHeader({
           </div>
           {meta ? <div className="page-header-meta">{meta}</div> : null}
         </div>
+        {footer ? <div className="page-header-footer">{footer}</div> : null}
       </header>
       {isLcars ? <LcarsMidBand /> : null}
     </>

@@ -4,10 +4,10 @@ import { apiRequest } from "../../api/http";
 import ConfirmModal from "../../components/common/ConfirmModal";
 import DataTable from "../../components/DataTable";
 import {
-  APP_USER_ROLES,
   formatRolesSummary,
   formToRoles,
   getAppRoleLabel,
+  getAppRoleOptions,
   getAppUserRole,
   rolesToForm,
 } from "../../utils/roles";
@@ -138,10 +138,10 @@ function AdminUsersPage() {
     }
   };
 
-  const toggleAppRole = (appName, checked) => {
+  const setAppRole = (appName, roleValue) => {
     setRoleForm((prev) => ({
       ...prev,
-      apps: { ...prev.apps, [appName]: checked },
+      apps: { ...prev.apps, [appName]: roleValue || false },
     }));
   };
 
@@ -237,11 +237,48 @@ function AdminUsersPage() {
                 Application roles
               </p>
               <p style={{ margin: "0 0 0.65rem", fontSize: "0.82rem", color: "var(--muted-text)" }}>
-                Grant one basic role per app. Users without a role cannot see or open that app.
+                Grant one role per app. Users without a role cannot see or open that app. Calendar
+                offers User (edit) and View (read-only display).
               </p>
               <div style={{ display: "flex", flexDirection: "column", gap: "0.55rem" }}>
                 {applications.map((app) => {
-                  const roleName = getAppUserRole(app.name) || APP_USER_ROLES[app.name];
+                  const options = getAppRoleOptions(app.name);
+                  const defaultRole = getAppUserRole(app.name);
+                  const currentValue = roleForm.isSystemAdmin
+                    ? defaultRole || true
+                    : roleForm.apps[app.name] || "";
+                  const multi = options.length > 1;
+
+                  if (multi) {
+                    return (
+                      <div
+                        key={app.name}
+                        style={{
+                          opacity: roleForm.isSystemAdmin ? 0.5 : 1,
+                          display: "flex",
+                          flexDirection: "column",
+                          gap: "0.35rem",
+                        }}
+                      >
+                        <strong>{app.title}</strong>
+                        <select
+                          value={typeof currentValue === "string" ? currentValue : ""}
+                          disabled={roleForm.isSystemAdmin}
+                          onChange={(e) => setAppRole(app.name, e.target.value)}
+                          style={{ maxWidth: "22rem" }}
+                        >
+                          <option value="">No access</option>
+                          {options.map((option) => (
+                            <option key={option.role} value={option.role}>
+                              {option.label} ({option.role})
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    );
+                  }
+
+                  const roleName = options[0]?.role || defaultRole;
                   const roleLabel = roleName ? getAppRoleLabel(roleName) : app.title;
                   return (
                     <label
@@ -258,7 +295,9 @@ function AdminUsersPage() {
                         type="checkbox"
                         checked={roleForm.isSystemAdmin || Boolean(roleForm.apps[app.name])}
                         disabled={roleForm.isSystemAdmin}
-                        onChange={(e) => toggleAppRole(app.name, e.target.checked)}
+                        onChange={(e) =>
+                          setAppRole(app.name, e.target.checked ? roleName : false)
+                        }
                         style={{ marginTop: "0.2rem" }}
                       />
                       <span>

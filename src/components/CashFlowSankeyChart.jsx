@@ -7,9 +7,13 @@ import { useTheme } from "../context/ThemeContext";
 import { currentMonthValue, formatCurrency, formatMonthLabel } from "../utils/format";
 import { rowsToSankeyData, SANKEY_HUB_ID } from "../utils/sankeyData";
 
-const INCOME_COLORS = ["#047857", "#0d9488", "#059669", "#14b8a6", "#34d399", "#6ee7b7"];
-const EXPENSE_COLORS = ["#dc2626", "#ea580c", "#d97706", "#e11d48", "#f97316", "#fb7185"];
-const HUB_COLOR = "#2563eb";
+const DEFAULT_INCOME_COLORS = ["#047857", "#0d9488", "#059669", "#14b8a6", "#34d399", "#6ee7b7"];
+const DEFAULT_EXPENSE_COLORS = ["#dc2626", "#ea580c", "#d97706", "#e11d48", "#f97316", "#fb7185"];
+const DEFAULT_HUB_COLOR = "#2563eb";
+
+const LCARS_INCOME_COLORS = ["#66ccaa", "#66ff99", "#5ad8a6", "#88e0c0", "#a8f0d8", "#44aa88"];
+const LCARS_EXPENSE_COLORS = ["#ff5555", "#ff9933", "#ffcc99", "#cc6699", "#ff7a45", "#ffb3b3"];
+const LCARS_HUB_COLOR = "#ffd580";
 
 function readCssColor(variableName, fallback) {
   if (typeof window === "undefined") {
@@ -19,19 +23,23 @@ function readCssColor(variableName, fallback) {
   return value || fallback;
 }
 
-function buildNodeColorMap(nodes) {
+function buildNodeColorMap(nodes, themeName) {
+  const isLcars = themeName === "lcars";
+  const incomeColors = isLcars ? LCARS_INCOME_COLORS : DEFAULT_INCOME_COLORS;
+  const expenseColors = isLcars ? LCARS_EXPENSE_COLORS : DEFAULT_EXPENSE_COLORS;
+  const hubColor = isLcars ? LCARS_HUB_COLOR : DEFAULT_HUB_COLOR;
   const colors = {};
   let incomeIndex = 0;
   let expenseIndex = 0;
 
   for (const node of nodes) {
     if (node.id === SANKEY_HUB_ID) {
-      colors[node.id] = HUB_COLOR;
+      colors[node.id] = hubColor;
     } else if (String(node.id).startsWith("income:")) {
-      colors[node.id] = INCOME_COLORS[incomeIndex % INCOME_COLORS.length];
+      colors[node.id] = incomeColors[incomeIndex % incomeColors.length];
       incomeIndex += 1;
     } else {
-      colors[node.id] = EXPENSE_COLORS[expenseIndex % EXPENSE_COLORS.length];
+      colors[node.id] = expenseColors[expenseIndex % expenseColors.length];
       expenseIndex += 1;
     }
   }
@@ -126,7 +134,10 @@ function CashFlowSankeyChart({
     [payload.expenses, payload.income]
   );
 
-  const nodeColors = useMemo(() => buildNodeColorMap(chartData.nodes), [chartData.nodes]);
+  const nodeColors = useMemo(
+    () => buildNodeColorMap(chartData.nodes, resolvedTheme),
+    [chartData.nodes, resolvedTheme]
+  );
 
   const themeColors = useMemo(() => {
     void resolvedTheme;
@@ -137,6 +148,8 @@ function CashFlowSankeyChart({
       border: readCssColor("--border", "#e4e9f2"),
     };
   }, [resolvedTheme]);
+
+  const hubFallback = resolvedTheme === "lcars" ? LCARS_HUB_COLOR : DEFAULT_HUB_COLOR;
 
   const categoryCount = (payload.income?.length || 0) + (payload.expenses?.length || 0);
   const chartHeight = fullPage
@@ -221,7 +234,7 @@ function CashFlowSankeyChart({
               data={chartData}
               margin={{ top: 12, right: compact ? 96 : 120, bottom: 12, left: compact ? 96 : 120 }}
               align="justify"
-              colors={(node) => nodeColors[node.id] ?? HUB_COLOR}
+              colors={(node) => nodeColors[node.id] ?? hubFallback}
               nodeOpacity={1}
               nodeHoverOthersOpacity={0.35}
               nodeThickness={18}

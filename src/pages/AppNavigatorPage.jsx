@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, Navigate } from "react-router-dom";
 import { getApplications } from "../api/dictionaryApi";
 import { useAuth } from "../context/AuthContext";
 import PageHeader from "../components/PageHeader";
+import { userHasCalendarViewOnly } from "../utils/roles";
 
 function GridIcon() {
   return (
@@ -44,7 +45,7 @@ function CardArrow() {
 }
 
 function AppNavigatorPage() {
-  const { isAdmin, canAccessApp } = useAuth();
+  const { isAdmin, canAccessApp, user } = useAuth();
   const [applications, setApplications] = useState([]);
   const [error, setError] = useState("");
 
@@ -60,6 +61,10 @@ function AppNavigatorPage() {
 
     loadApplications();
   }, []);
+
+  if (userHasCalendarViewOnly(user?.roles ?? [], isAdmin)) {
+    return <Navigate to="/app/calendar" replace />;
+  }
 
   const visibleApps = applications.filter((app) => canAccessApp(app.name));
 

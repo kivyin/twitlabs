@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { useBranding } from "../context/BrandingContext";
@@ -20,6 +20,10 @@ function AppShell({ children }) {
   const displayName = user?.display_name || user?.username || "";
 
   const closeMenu = () => setMenuOpen(false);
+
+  useEffect(() => {
+    closeMenu();
+  }, [location.pathname]);
 
   const handleNavigate = () => {
     closeMenu();

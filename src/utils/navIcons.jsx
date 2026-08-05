@@ -7,6 +7,7 @@ export const NAV_ICON_OPTIONS = [
   { value: "fields", label: "Fields" },
   { value: "users", label: "Users" },
   { value: "ide", label: "IDE" },
+  { value: "backup", label: "Backup" },
   { value: "deletes", label: "Deleted records" },
   { value: "logs", label: "Error logs" },
   { value: "navigation", label: "Navigation" },
@@ -17,6 +18,9 @@ export const NAV_ICON_OPTIONS = [
   { value: "notes", label: "Notes" },
   { value: "decisions", label: "Decision Picker" },
   { value: "site-tracker", label: "Site Tracker" },
+  { value: "training", label: "Training" },
+  { value: "calendar", label: "Calendar" },
+  { value: "sparkles", label: "AI Coach" },
 ];
 
 export const navIcons = {
@@ -50,6 +54,13 @@ export const navIcons = {
     </>
   ),
   ide: <path d="m8 9-3 3 3 3m8-6 3 3-3 3M13 6l-2 12" />,
+  backup: (
+    <>
+      <path d="M12 3v12" />
+      <path d="m8 7 4-4 4 4" />
+      <path d="M5 15v4h14v-4" />
+    </>
+  ),
   deletes: (
     <>
       <path d="M3 6h18" />
@@ -120,6 +131,31 @@ export const navIcons = {
       <path d="M3 12h18" />
       <path d="M12 3a14 14 0 0 1 0 18" />
       <path d="M12 3a14 14 0 0 0 0 18" />
+    </>
+  ),
+  training: (
+    <>
+      <path d="M6.5 6.5 4 9l3 3 2.5-2.5" />
+      <path d="M17.5 6.5 20 9l-3 3-2.5-2.5" />
+      <path d="M9 12h6" />
+      <path d="M10 15l2 5 2-5" />
+      <circle cx="7" cy="7" r="2" />
+      <circle cx="17" cy="7" r="2" />
+    </>
+  ),
+  calendar: (
+    <>
+      <rect x="3" y="5" width="18" height="16" rx="2" />
+      <path d="M3 10h18" />
+      <path d="M8 3v4M16 3v4" />
+      <path d="M8 14h2M12 14h2M16 14h1M8 17h2M12 17h2" />
+    </>
+  ),
+  sparkles: (
+    <>
+      <path d="M12 3l1.2 3.8L17 8l-3.8 1.2L12 13l-1.2-3.8L7 8l3.8-1.2L12 3z" />
+      <path d="M5 14l.7 2.1L8 17l-2.3.7L5 20l-.7-2.3L2 17l2.3-.9L5 14z" />
+      <path d="M18 13l.8 2.4L21 16l-2.2.8L18 19l-.8-2.2L15 16l2.2-.6L18 13z" />
     </>
   ),
 };

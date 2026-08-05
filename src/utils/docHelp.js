@@ -37,6 +37,7 @@ export function usePageHelpFromPath(pathname, params = {}) {
       "deletes",
       "logs",
       "ide",
+      "backup",
       "zero-boot",
     ]);
     return { app: "admin", topic: adminTopics.has(segment) ? segment : "overview" };
@@ -96,6 +97,19 @@ export function usePageHelpFromPath(pathname, params = {}) {
   }
   if (app === "site-tracker") {
     return { app: "site-tracker", topic: "overview" };
+  }
+  if (app === "training") {
+    if (pathname.includes("/workout")) return { app: "training", topic: "workout" };
+    if (pathname.includes("/coach")) return { app: "training", topic: "coach" };
+    if (pathname.includes("/routines")) return { app: "training", topic: "routines" };
+    if (pathname.includes("/exercises")) return { app: "training", topic: "exercises" };
+    if (pathname.includes("/history")) return { app: "training", topic: "history" };
+    if (pathname.includes("/progress")) return { app: "training", topic: "progress" };
+    if (pathname.includes("/measurements")) return { app: "training", topic: "measurements" };
+    return { app: "training", topic: "overview" };
+  }
+  if (app === "calendar") {
+    return { app: "calendar", topic: "overview" };
   }
 
   return null;

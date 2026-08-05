@@ -50,6 +50,18 @@
   --lcars-frame-sm: 0;
   --lcars-pill: 0;
 
+  /* Chart series (consumed by EChart theme helper) */
+  --chart-1: #ff9933;
+  --chart-2: #ffd580;
+  --chart-3: #66ccaa;
+  --chart-4: #8da6ff;
+  --chart-5: #b0b8ff;
+  --chart-6: #cc6699;
+  --chart-7: #ffcc99;
+  --chart-8: #ff5555;
+  --chart-9: #d2a679;
+  --chart-10: #66ff99;
+
   --radius-sm: 0;
   --radius: 0;
   --radius-md: 0;

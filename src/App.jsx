@@ -8,6 +8,7 @@ import { FavoritesProvider } from "./context/FavoritesContext";
 import { ThemeProvider } from "./context/ThemeContext";
 import AdminPage from "./pages/AdminPage";
 import AdminApplicationsPage from "./pages/admin/AdminApplicationsPage";
+import AdminBackupPage from "./pages/admin/AdminBackupPage";
 import AdminDeletesPage from "./pages/admin/AdminDeletesPage";
 import AdminLogsPage from "./pages/admin/AdminLogsPage";
 import AdminFieldsPage from "./pages/admin/AdminFieldsPage";
@@ -39,6 +40,15 @@ import NotesWorkspacePage from "./pages/notes/NotesWorkspacePage";
 import NotesRecentPage from "./pages/notes/NotesRecentPage";
 import DecisionsAppGuard from "./pages/decisions/DecisionsAppGuard";
 import DecisionPickerPage from "./pages/decisions/DecisionPickerPage";
+import TrainingAppGuard from "./pages/training/TrainingAppGuard";
+import TrainingWorkoutPage from "./pages/training/TrainingWorkoutPage";
+import TrainingRoutinesPage from "./pages/training/TrainingRoutinesPage";
+import TrainingRoutineEditPage from "./pages/training/TrainingRoutineEditPage";
+import TrainingExercisesPage from "./pages/training/TrainingExercisesPage";
+import TrainingHistoryPage from "./pages/training/TrainingHistoryPage";
+import TrainingProgressPage from "./pages/training/TrainingProgressPage";
+import TrainingMeasurementsPage from "./pages/training/TrainingMeasurementsPage";
+import TrainingCoachPage from "./pages/training/TrainingCoachPage";
 import DocsHomePage from "./pages/docs/DocsHomePage";
 import DocsAppPage from "./pages/docs/DocsAppPage";
 import DocsTopicPage from "./pages/docs/DocsTopicPage";
@@ -111,6 +121,16 @@ function ProtectedLayout() {
             <Route path="browse" element={<NotesAppGuard><NotesWorkspacePage /></NotesAppGuard>} />
             <Route path="recent" element={<NotesAppGuard><NotesRecentPage /></NotesAppGuard>} />
             <Route path="spin" element={<DecisionsAppGuard><DecisionPickerPage /></DecisionsAppGuard>} />
+            <Route path="workout" element={<TrainingAppGuard><TrainingWorkoutPage /></TrainingAppGuard>} />
+            <Route path="workout/:workoutId" element={<TrainingAppGuard><TrainingWorkoutPage /></TrainingAppGuard>} />
+            <Route path="coach" element={<TrainingAppGuard><TrainingCoachPage /></TrainingAppGuard>} />
+            <Route path="routines" element={<TrainingAppGuard><TrainingRoutinesPage /></TrainingAppGuard>} />
+            <Route path="routines/new" element={<TrainingAppGuard><TrainingRoutineEditPage /></TrainingAppGuard>} />
+            <Route path="routines/:recordId" element={<TrainingAppGuard><TrainingRoutineEditPage /></TrainingAppGuard>} />
+            <Route path="exercises" element={<TrainingAppGuard><TrainingExercisesPage /></TrainingAppGuard>} />
+            <Route path="history" element={<TrainingAppGuard><TrainingHistoryPage /></TrainingAppGuard>} />
+            <Route path="progress" element={<TrainingAppGuard><TrainingProgressPage /></TrainingAppGuard>} />
+            <Route path="measurements" element={<TrainingAppGuard><TrainingMeasurementsPage /></TrainingAppGuard>} />
             <Route path="reports" element={<ReportCenterPage />} />
             <Route path="reports/:reportKey" element={<ReportDetailPage />} />
             <Route path="accounts/:accountId/register" element={<AccountRegisterPage />} />
@@ -135,6 +155,7 @@ function ProtectedLayout() {
             <Route path="deletes" element={<AdminDeletesPage />} />
             <Route path="logs" element={<AdminLogsPage />} />
             <Route path="navigation" element={<AdminNavigationPage />} />
+            <Route path="backup" element={<AdminBackupPage />} />
             <Route path="zero-boot" element={<AdminZeroBootPage />} />
           </Route>
 

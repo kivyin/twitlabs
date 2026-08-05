@@ -11,6 +11,14 @@ import {
 } from "node:fs";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { installTrainingApi } from "./vite.training-api.js";
+import {
+  CALENDAR_EVENTS_TABLE,
+  CALENDAR_SHOPPING_ITEMS_TABLE,
+  CALENDAR_SHOPPING_LISTS_TABLE,
+  installCalendarApi,
+} from "./vite.calendar-api.js";
+import { callGeminiJson, GEMINI_DEFAULT_MODEL } from "./vite.gemini.js";
 
 // Load .env before resolving data paths (SQLITE_DB_PATH, SQLITE_DATA_DIR, GEMINI_API_KEY, …).
 (() => {
@@ -63,6 +71,34 @@ const resolveDbPath = () => {
 const dbPath = resolveDbPath();
 mkdirSync(path.dirname(dbPath), { recursive: true });
 const db = new DatabaseSync(dbPath);
+
+/** Set SQLITE_SCHEMA_LOG=1 (migrate script / prebuild / postinstall) for step-by-step output. */
+const SCHEMA_LOG_VERBOSE =
+  process.env.SQLITE_SCHEMA_LOG === "1" || process.env.SQLITE_SCHEMA_LOG === "true";
+
+const schemaLog = (message) => {
+  if (SCHEMA_LOG_VERBOSE) {
+    console.log(`[schema] ${message}`);
+  }
+};
+
+const schemaWarn = (message) => {
+  console.warn(`[schema] ${message}`);
+};
+
+const schemaError = (message, error) => {
+  if (error) {
+    console.error(`[schema] ${message}`, error?.stack || error);
+  } else {
+    console.error(`[schema] ${message}`);
+  }
+};
+
+// Print once at startup so it's obvious which file migrations touch.
+console.log(`[sqlite] Using database: ${dbPath}`);
+if (SCHEMA_LOG_VERBOSE) {
+  console.log(`[schema] Verbose migration logging enabled`);
+}
 
 const GITHUB_REPO = process.env.GITHUB_REPO?.trim() || "kivyin/twitlabs";
 const VERSION_CHECK_TTL_MS = (() => {
@@ -237,6 +273,13 @@ const NOTE_TOPICS_TABLE = "note_topics";
 const NOTES_TABLE = "notes";
 const DECISION_LISTS_TABLE = "decision_lists";
 const DECISION_ITEMS_TABLE = "decision_items";
+const TRAINING_EXERCISES_TABLE = "training_exercises";
+const TRAINING_ROUTINES_TABLE = "training_routines";
+const TRAINING_ROUTINE_EXERCISES_TABLE = "training_routine_exercises";
+const TRAINING_WORKOUTS_TABLE = "training_workouts";
+const TRAINING_WORKOUT_EXERCISES_TABLE = "training_workout_exercises";
+const TRAINING_WORKOUT_SETS_TABLE = "training_workout_sets";
+const TRAINING_MEASUREMENTS_TABLE = "training_measurements";
 const SYSTEM_DELETES_TABLE = "system_deletes";
 const SYSTEM_NAVIGATION_TABLE = "system_navigation";
 const SYSTEM_LOGS_TABLE = "system_logs";
@@ -255,6 +298,19 @@ const APP_USER_ROLES = {
   notes: "note_user",
   decisions: "decision_user",
   "site-tracker": "site_tracker_user",
+  training: "training_user",
+  calendar: "calendar_user",
+};
+
+/** Extra assignable roles beyond the default APP_USER_ROLES entry (one role per app per user). */
+const APP_EXTRA_ROLES = {
+  calendar: ["calendar_view"],
+};
+
+const getAllowedAppRoles = (appName) => {
+  const primary = APP_USER_ROLES[appName];
+  if (!primary) return [];
+  return [primary, ...(APP_EXTRA_ROLES[appName] || [])];
 };
 
 const SHARED_LOOKUP_TABLES = new Set(["users", "applications"]);
@@ -288,6 +344,16 @@ const HIDDEN_NAV_TABLES = new Set([
   ACCOUNT_JOINT_USERS_TABLE,
   DECISION_LISTS_TABLE,
   DECISION_ITEMS_TABLE,
+  TRAINING_EXERCISES_TABLE,
+  TRAINING_ROUTINES_TABLE,
+  TRAINING_ROUTINE_EXERCISES_TABLE,
+  TRAINING_WORKOUTS_TABLE,
+  TRAINING_WORKOUT_EXERCISES_TABLE,
+  TRAINING_WORKOUT_SETS_TABLE,
+  TRAINING_MEASUREMENTS_TABLE,
+  CALENDAR_EVENTS_TABLE,
+  CALENDAR_SHOPPING_LISTS_TABLE,
+  CALENDAR_SHOPPING_ITEMS_TABLE,
 ]);
 
 const DEFAULT_ADMIN_NAV_ITEMS = [
@@ -299,8 +365,12 @@ const DEFAULT_ADMIN_NAV_ITEMS = [
   { label: "Error Logs", path: "/admin/logs", icon: "logs", sort_order: 55 },
   { label: "Navigation", path: "/admin/navigation", icon: "navigation", sort_order: 60 },
   { label: "IDE", path: "/admin/ide", icon: "ide", sort_order: 70 },
+  { label: "Backup", path: "/admin/backup", icon: "backup", sort_order: 80 },
   { label: "Zero Boot", path: "/admin/zero-boot", icon: "deletes", sort_order: 90 },
 ];
+
+const HUB_FULL_BACKUP_FORMAT = "hub-full-backup";
+const HUB_FULL_BACKUP_VERSION = 1;
 
 const AUDIT_FIELDS = ["created_by", "created_on", "updated_by", "updated_on"];
 
@@ -638,11 +708,31 @@ const json = (res, status, payload) => {
 const all = (sql, params = []) => db.prepare(sql).all(...params);
 
 const run = (sql, params = []) => {
-  const result = db.prepare(sql).run(...params);
-  return {
-    changes: result.changes ?? 0,
-    lastID: Number(result.lastInsertRowid ?? 0),
-  };
+  const normalized = String(sql || "").trim().replace(/\s+/g, " ");
+  if (SCHEMA_LOG_VERBOSE && /^ALTER\s+TABLE\b/i.test(normalized)) {
+    schemaLog(`DDL: ${normalized.slice(0, 180)}${normalized.length > 180 ? "…" : ""}`);
+  }
+
+  try {
+    const result = db.prepare(sql).run(...params);
+    return {
+      changes: result.changes ?? 0,
+      lastID: Number(result.lastInsertRowid ?? 0),
+    };
+  } catch (error) {
+    schemaError(`SQL failed: ${normalized.slice(0, 180)}${normalized.length > 180 ? "…" : ""}`, error);
+    throw error;
+  }
+};
+
+const runSchemaStep = (name, fn) => {
+  try {
+    fn();
+    schemaLog(`OK  ${name}`);
+  } catch (error) {
+    schemaError(`FAIL ${name}`, error);
+    throw error;
+  }
 };
 
 const formatLabel = (value) =>
@@ -819,6 +909,15 @@ const ensureApplications = () => {
     INSERT OR IGNORE INTO ${APPLICATIONS_TABLE} (name, title, description)
     VALUES ('site-tracker', 'Site Tracker', 'Track website logins and site accounts.')
   `);
+
+  run(`
+    INSERT OR IGNORE INTO ${APPLICATIONS_TABLE} (name, title, description)
+    VALUES ('training', 'Training', 'Track workouts, routines, strength progress, and body measurements.')
+  `);
+  run(`
+    INSERT OR IGNORE INTO ${APPLICATIONS_TABLE} (name, title, description)
+    VALUES ('calendar', 'Calendar', 'Schedule events and work time frames on a shared calendar.')
+  `);
 };
 
 const ensureUsers = () => {
@@ -892,7 +991,7 @@ const isAllowedRoleAssignment = (application, role) => {
   if (application === "system" && role === "admin") {
     return true;
   }
-  return APP_USER_ROLES[application] === role;
+  return getAllowedAppRoles(application).includes(role);
 };
 
 const setUserRoles = (userId, roles, actingUserId = null) => {
@@ -1162,11 +1261,13 @@ const markSchemaMigration = (name) => {
   run(`INSERT OR IGNORE INTO _schema_migrations (name, applied_on) VALUES (?, datetime('now'))`, [
     name,
   ]);
+  schemaLog(`applied named migration: ${name}`);
 };
 
 const ensureLiabilityPositiveOwedSemantics = () => {
   ensureSchemaMigrationsTable();
   if (hasSchemaMigration("liability_positive_owed_v1")) {
+    schemaLog("skip named migration: liability_positive_owed_v1 (already applied)");
     return;
   }
 
@@ -1176,6 +1277,7 @@ const ensureLiabilityPositiveOwedSemantics = () => {
     ]).length > 0;
 
   if (!transactionsExist) {
+    schemaLog("skip named migration: liability_positive_owed_v1 (transactions table missing)");
     return;
   }
 
@@ -1189,6 +1291,7 @@ const ensureLiabilityPositiveOwedSemantics = () => {
   }
 
   const placeholders = liabilityTypeIds.map(() => "?").join(", ");
+  schemaLog("running named migration: liability_positive_owed_v1");
 
   run(
     `
@@ -2478,6 +2581,20 @@ const upsertNavigationItem = (item, userId = null) => {
 const seedNavigation = (userId = null) => {
   ensureNavigationSchema();
 
+  // Repair Training main nav if an earlier seed overwrote /app/training with a child item.
+  run(
+    `
+      UPDATE ${SYSTEM_NAVIGATION_TABLE}
+      SET label = 'Training',
+          icon = 'training',
+          is_main = 1,
+          parent_id = NULL,
+          application = 'training',
+          nav_section = 'apps'
+      WHERE path = '/app/training'
+    `
+  );
+
   const adminMainId = upsertNavigationItem(
     {
       label: "Administration",
@@ -2519,7 +2636,11 @@ const seedNavigation = (userId = null) => {
             ? "decisions"
             : application.name === "site-tracker"
               ? "site-tracker"
-              : "app",
+              : application.name === "training"
+                ? "training"
+                : application.name === "calendar"
+                  ? "calendar"
+                  : "app",
         is_main: 1,
         parent_id: null,
         application: application.name,
@@ -2621,12 +2742,39 @@ const seedNavigation = (userId = null) => {
       );
     }
 
+    if (application.name === "training") {
+      const trainingNavItems = [
+        { label: "Start workout", path: `/app/training/workout`, icon: "focus", sort_order: 1 },
+        { label: "AI Coach", path: `/app/training/coach`, icon: "sparkles", sort_order: 2 },
+        { label: "Routines", path: `/app/training/routines`, icon: "tables", sort_order: 3 },
+        { label: "Exercises", path: `/app/training/exercises`, icon: "tables", sort_order: 4 },
+        { label: "History", path: `/app/training/history`, icon: "reports", sort_order: 5 },
+        { label: "Progress", path: `/app/training/progress`, icon: "reports", sort_order: 6 },
+        { label: "Measurements", path: `/app/training/measurements`, icon: "tables", sort_order: 7 },
+      ];
+      for (const item of trainingNavItems) {
+        upsertNavigationItem(
+          {
+            ...item,
+            is_main: 0,
+            parent_id: appMainId,
+            application: application.name,
+            nav_section: "apps",
+            sort_order: (appIndex + 1) * 100 + item.sort_order,
+          },
+          userId
+        );
+      }
+    }
+
     for (const [tableIndex, collection] of collections.entries()) {
       if (
         application.name === "tasks" ||
         application.name === "notes" ||
         application.name === "decisions" ||
-        application.name === "site-tracker"
+        application.name === "site-tracker" ||
+        application.name === "training" ||
+        application.name === "calendar"
       ) {
         continue;
       }
@@ -2750,16 +2898,12 @@ const replaceDashboardLayoutItems = (dashboardId, items) => {
 };
 
 const assertSelectSql = (sql) => {
-  if (!sql || typeof sql !== "string") {
-    throw new Error("sql is required.");
-  }
-  if (sql.includes(";")) {
-    throw new Error("Only one SQL statement is allowed.");
-  }
-  const statementType = getStatementType(sql);
+  const normalized = normalizeSingleSqlStatement(sql);
+  const statementType = getStatementType(normalized);
   if (!["SELECT", "WITH"].includes(statementType)) {
     throw new Error("Only SELECT queries are allowed for dashboard reports.");
   }
+  return normalized;
 };
 
 /** Preferred display column for each referenced table (mirrors client heuristics). */
@@ -3008,39 +3152,43 @@ const ensureSystemDictionary = () => {
   ensureRefLabelFields();
 };
 
-ensureApplications();
-ensureUsers();
-ensureUserRoles();
-ensureAccountsSchema();
-ensureDashboardSchema();
-ensureTransactionsSchema();
-ensureLiabilityPositiveOwedSemantics();
-ensureCategoryFinanceSchema();
-ensurePhase2Schema();
-ensurePhase3Schema();
-ensurePhase4Schema();
-ensureTasksSchema();
-ensureNotesSchema();
-ensureNotesEditorColumns();
-ensureDecisionsSchema();
-ensureSystemDeletesSchema();
-ensureSystemLogsSchema();
-ensureNavigationSchema();
-ensureAuditColumns();
-run(`
-  CREATE INDEX IF NOT EXISTS system_logs_created_on_idx
-  ON ${SYSTEM_LOGS_TABLE}(created_on DESC, id DESC)
-`);
-ensureSystemDictionary();
-ensurePhase2DictionaryLabels();
-ensurePhase3DictionaryLabels();
-ensurePhase4DictionaryLabels();
-ensureTasksDictionaryLabels();
-ensureNotesDictionaryLabels();
-ensureDecisionsDictionaryLabels();
-ensureAuditDictionaryLabels();
-ensureAccountDictionaryLabels();
-ensureTransactionDictionaryLabels();
+schemaLog("Starting core schema ensure steps…");
+runSchemaStep("applications", ensureApplications);
+runSchemaStep("users", ensureUsers);
+runSchemaStep("user_roles", ensureUserRoles);
+runSchemaStep("accounts", ensureAccountsSchema);
+runSchemaStep("dashboard", ensureDashboardSchema);
+runSchemaStep("transactions", ensureTransactionsSchema);
+runSchemaStep("liability_positive_owed_semantics", ensureLiabilityPositiveOwedSemantics);
+runSchemaStep("category_finance", ensureCategoryFinanceSchema);
+runSchemaStep("phase2", ensurePhase2Schema);
+runSchemaStep("phase3", ensurePhase3Schema);
+runSchemaStep("phase4", ensurePhase4Schema);
+runSchemaStep("tasks", ensureTasksSchema);
+runSchemaStep("notes", ensureNotesSchema);
+runSchemaStep("notes_editor_columns", ensureNotesEditorColumns);
+runSchemaStep("decisions", ensureDecisionsSchema);
+runSchemaStep("system_deletes", ensureSystemDeletesSchema);
+runSchemaStep("system_logs", ensureSystemLogsSchema);
+runSchemaStep("navigation", ensureNavigationSchema);
+runSchemaStep("audit_columns", ensureAuditColumns);
+runSchemaStep("system_logs_index", () => {
+  run(`
+    CREATE INDEX IF NOT EXISTS system_logs_created_on_idx
+    ON ${SYSTEM_LOGS_TABLE}(created_on DESC, id DESC)
+  `);
+});
+runSchemaStep("system_dictionary", ensureSystemDictionary);
+runSchemaStep("phase2_dictionary_labels", ensurePhase2DictionaryLabels);
+runSchemaStep("phase3_dictionary_labels", ensurePhase3DictionaryLabels);
+runSchemaStep("phase4_dictionary_labels", ensurePhase4DictionaryLabels);
+runSchemaStep("tasks_dictionary_labels", ensureTasksDictionaryLabels);
+runSchemaStep("notes_dictionary_labels", ensureNotesDictionaryLabels);
+runSchemaStep("decisions_dictionary_labels", ensureDecisionsDictionaryLabels);
+runSchemaStep("audit_dictionary_labels", ensureAuditDictionaryLabels);
+runSchemaStep("account_dictionary_labels", ensureAccountDictionaryLabels);
+runSchemaStep("transaction_dictionary_labels", ensureTransactionDictionaryLabels);
+schemaLog("Core schema ensure steps finished");
 
 const getDictionaryCounts = () => {
   const rows = all(
@@ -3078,6 +3226,18 @@ const assertValidTable = (table) => {
 const getStatementType = (sql) => {
   const match = sql.trim().match(/^([a-zA-Z]+)/);
   return match ? match[1].toUpperCase() : "";
+};
+
+/** Trim whitespace and a single trailing semicolon so pasted SELECT ...; works. */
+const normalizeSingleSqlStatement = (sql) => {
+  if (!sql || typeof sql !== "string") {
+    throw new Error("sql is required.");
+  }
+  const normalized = sql.trim().replace(/;\s*$/, "");
+  if (normalized.includes(";")) {
+    throw new Error("Only one SQL statement is allowed per request.");
+  }
+  return normalized;
 };
 
 const getPrimaryKeyColumn = (table) => {
@@ -3448,15 +3608,25 @@ const userCanAccessApp = (user, appName) => {
   if (isSessionAdmin(user)) {
     return true;
   }
-  const expectedRole = APP_USER_ROLES[appName];
-  if (!expectedRole) {
+  const allowed = getAllowedAppRoles(appName);
+  if (allowed.length === 0) {
     return false;
   }
   return (
     user.roles?.some(
       (role) =>
         role.application === appName &&
-        (role.role === expectedRole || role.role === "member")
+        (allowed.includes(role.role) || role.role === "member")
+    ) ?? false
+  );
+};
+
+const userCanEditCalendar = (user) => {
+  if (!user) return false;
+  if (isSessionAdmin(user)) return true;
+  return (
+    user.roles?.some(
+      (role) => role.application === "calendar" && role.role === "calendar_user"
     ) ?? false
   );
 };
@@ -3570,30 +3740,24 @@ const requireAdmin = (req, res) => {
 };
 
 const queryDb = ({ sql, params = [], table }, { allowSecrets = false } = {}) => {
-  if (!sql || typeof sql !== "string") {
-    throw new Error("sql is required.");
-  }
-
-  if (sql.includes(";")) {
-    throw new Error("Only one SQL statement is allowed per request.");
-  }
+  const normalizedSql = normalizeSingleSqlStatement(sql);
 
   if (table) {
     assertValidTable(table);
   }
 
-  const statementType = getStatementType(sql);
+  const statementType = getStatementType(normalizedSql);
   const readStatements = new Set(["SELECT", "WITH", "PRAGMA"]);
 
   if (!readStatements.has(statementType)) {
     throw new Error("Only read-only SQL (SELECT, WITH, PRAGMA) is allowed.");
   }
 
-  const rows = all(sql, params);
+  const rows = all(normalizedSql, params);
   const looksLikeAccounts =
     table === ACCOUNTS_TABLE ||
-    /\bfrom\s+accounts\b/i.test(sql) ||
-    /\bjoin\s+accounts\b/i.test(sql);
+    /\bfrom\s+accounts\b/i.test(normalizedSql) ||
+    /\bjoin\s+accounts\b/i.test(normalizedSql);
 
   return {
     rows: looksLikeAccounts
@@ -3613,27 +3777,21 @@ const ELEVATED_IDE_STATEMENTS = new Set([
 ]);
 
 const executeElevatedIdeSql = ({ sql, params = [] }, user = null, options = {}) => {
-  if (!sql || typeof sql !== "string") {
-    throw new Error("sql is required.");
-  }
+  const normalizedSql = normalizeSingleSqlStatement(sql);
 
-  if (sql.includes(";")) {
-    throw new Error("Only one SQL statement is allowed per request.");
-  }
-
-  const statementType = getStatementType(sql);
+  const statementType = getStatementType(normalizedSql);
   if (!ELEVATED_IDE_STATEMENTS.has(statementType)) {
     throw new Error(
       "Elevated IDE SQL allows SELECT, WITH, PRAGMA, INSERT, UPDATE, and DELETE only."
     );
   }
 
-  const truncatedSql = sql.trim().slice(0, 2000);
+  const truncatedSql = normalizedSql.trim().slice(0, 2000);
   const isRead = statementType === "SELECT" || statementType === "WITH" || statementType === "PRAGMA";
 
   let result;
   if (isRead) {
-    let rows = all(sql, params);
+    let rows = all(normalizedSql, params);
     if (!options.allowSecrets) {
       rows = redactAccountSecretsInRows(ACCOUNTS_TABLE, rows, { allowSecrets: false });
     }
@@ -3644,7 +3802,7 @@ const executeElevatedIdeSql = ({ sql, params = [] }, user = null, options = {}) 
       statement_type: statementType,
     };
   } else {
-    const writeResult = run(sql, params);
+    const writeResult = run(normalizedSql, params);
     result = {
       rows: [],
       changes: writeResult.changes,
@@ -4074,6 +4232,66 @@ const sendApiError = (res, req, statusCode, errorOrMessage, options = {}) => {
   json(res, statusCode, payload);
 };
 
+const { ensureTrainingSchema, handleTrainingApi } = installTrainingApi({
+  run,
+  all,
+  insertAuditedRow,
+  updateAuditedRow,
+  archiveAndDeleteRowsInternal,
+  isSessionAdmin,
+  userCanAccessApp,
+  json,
+  readBody,
+  sendApiError,
+  callGeminiJson,
+  USERS_TABLE,
+  USER_PREFERENCES_TABLE,
+  TRAINING_EXERCISES_TABLE,
+  TRAINING_ROUTINES_TABLE,
+  TRAINING_ROUTINE_EXERCISES_TABLE,
+  TRAINING_WORKOUTS_TABLE,
+  TRAINING_WORKOUT_EXERCISES_TABLE,
+  TRAINING_WORKOUT_SETS_TABLE,
+  TRAINING_MEASUREMENTS_TABLE,
+});
+runSchemaStep("training", ensureTrainingSchema);
+
+const { ensureCalendarSchema, handleCalendarApi } = installCalendarApi({
+  run,
+  all,
+  insertAuditedRow,
+  updateAuditedRow,
+  archiveAndDeleteRowsInternal,
+  isSessionAdmin,
+  userCanAccessApp,
+  userCanEditCalendar,
+  json,
+  readBody,
+  sendApiError,
+  USERS_TABLE,
+});
+runSchemaStep("calendar", ensureCalendarSchema);
+
+if (SCHEMA_LOG_VERBOSE) {
+  try {
+    ensureSchemaMigrationsTable();
+    const applied = all(
+      `SELECT name, applied_on FROM _schema_migrations ORDER BY applied_on, name`
+    );
+    if (applied.length === 0) {
+      schemaLog("Named migrations applied: (none recorded yet)");
+    } else {
+      schemaLog(`Named migrations applied (${applied.length}):`);
+      for (const row of applied) {
+        schemaLog(`  - ${row.name} @ ${row.applied_on}`);
+      }
+    }
+  } catch (error) {
+    schemaWarn(`Could not list named migrations: ${error?.message || error}`);
+  }
+  schemaLog("Schema migration pass complete");
+}
+
 const runInTransaction = (callback) => {
   db.exec("BEGIN IMMEDIATE");
   try {
@@ -4192,6 +4410,20 @@ const performZeroBoot = (actingUser, { confirm } = {}) => {
     deleteAll(DECISION_ITEMS_TABLE);
     deleteAll(DECISION_LISTS_TABLE);
 
+    // Training
+    deleteAll(TRAINING_WORKOUT_SETS_TABLE);
+    deleteAll(TRAINING_WORKOUT_EXERCISES_TABLE);
+    deleteAll(TRAINING_WORKOUTS_TABLE);
+    deleteAll(TRAINING_ROUTINE_EXERCISES_TABLE);
+    deleteAll(TRAINING_ROUTINES_TABLE);
+    deleteAll(TRAINING_MEASUREMENTS_TABLE);
+    deleteAll(TRAINING_EXERCISES_TABLE);
+
+    // Calendar
+    deleteAll(CALENDAR_SHOPPING_ITEMS_TABLE);
+    deleteAll(CALENDAR_SHOPPING_LISTS_TABLE);
+    deleteAll(CALENDAR_EVENTS_TABLE);
+
     // Per-user UI state
     deleteAll(USER_FAVORITES_TABLE);
     deleteAll(USER_PREFERENCES_TABLE);
@@ -4245,6 +4477,16 @@ const performZeroBoot = (actingUser, { confirm } = {}) => {
       NOTEBOOKS_TABLE,
       DECISION_ITEMS_TABLE,
       DECISION_LISTS_TABLE,
+      TRAINING_WORKOUT_SETS_TABLE,
+      TRAINING_WORKOUT_EXERCISES_TABLE,
+      TRAINING_WORKOUTS_TABLE,
+      TRAINING_ROUTINE_EXERCISES_TABLE,
+      TRAINING_ROUTINES_TABLE,
+      TRAINING_MEASUREMENTS_TABLE,
+      TRAINING_EXERCISES_TABLE,
+      CALENDAR_SHOPPING_ITEMS_TABLE,
+      CALENDAR_SHOPPING_LISTS_TABLE,
+      CALENDAR_EVENTS_TABLE,
       USER_FAVORITES_TABLE,
       USER_PREFERENCES_TABLE,
       SYSTEM_DELETES_TABLE,
@@ -4266,6 +4508,8 @@ const performZeroBoot = (actingUser, { confirm } = {}) => {
   ensureTasksDictionaryLabels();
   ensureNotesDictionaryLabels();
   ensureDecisionsDictionaryLabels();
+  ensureTrainingSchema();
+  ensureCalendarSchema();
   ensureAuditDictionaryLabels();
   ensureAccountDictionaryLabels();
   ensureTransactionDictionaryLabels();
@@ -4291,6 +4535,312 @@ const performZeroBoot = (actingUser, { confirm } = {}) => {
     cleared_tables: clearedTables,
     removed_attachment_dirs: removedAttachmentDirs,
     removed_account_images: removedAccountImages,
+  };
+};
+
+const readAppPackageVersion = () => {
+  try {
+    const pkg = JSON.parse(readFileSync(path.resolve(process.cwd(), "package.json"), "utf8"));
+    return String(pkg?.version || "unknown");
+  } catch {
+    return "unknown";
+  }
+};
+
+const getTableColumnInfo = (tableName) => all(`PRAGMA table_info(${quoteIdentifier(tableName)})`);
+
+/** Parents before children for INSERT; reverse for DELETE. */
+const topoSortTablesByForeignKeys = (tableNames) => {
+  const tables = [...new Set(tableNames)].filter(Boolean);
+  const tableSet = new Set(tables);
+  const indegree = Object.fromEntries(tables.map((name) => [name, 0]));
+  const children = Object.fromEntries(tables.map((name) => [name, []]));
+
+  for (const table of tables) {
+    const fks = all(`PRAGMA foreign_key_list(${quoteIdentifier(table)})`);
+    for (const fk of fks) {
+      const parent = fk?.table;
+      if (!parent || !tableSet.has(parent) || parent === table) {
+        continue;
+      }
+      children[parent].push(table);
+      indegree[table] += 1;
+    }
+  }
+
+  const queue = tables.filter((name) => indegree[name] === 0).sort((a, b) => a.localeCompare(b));
+  const ordered = [];
+  while (queue.length > 0) {
+    const next = queue.shift();
+    ordered.push(next);
+    for (const child of children[next]) {
+      indegree[child] -= 1;
+      if (indegree[child] === 0) {
+        queue.push(child);
+        queue.sort((a, b) => a.localeCompare(b));
+      }
+    }
+  }
+
+  if (ordered.length < tables.length) {
+    const remaining = tables.filter((name) => !ordered.includes(name)).sort((a, b) => a.localeCompare(b));
+    ordered.push(...remaining);
+  }
+
+  return ordered;
+};
+
+const serializeBackupCell = (value) => {
+  if (Buffer.isBuffer(value)) {
+    return { __hub_bin: value.toString("base64") };
+  }
+  if (value instanceof Uint8Array) {
+    return { __hub_bin: Buffer.from(value).toString("base64") };
+  }
+  return value;
+};
+
+const deserializeBackupCell = (value) => {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    if (typeof value.__hub_bin === "string") {
+      return Buffer.from(value.__hub_bin, "base64");
+    }
+    // Node's default Buffer JSON shape, in case an older dump used JSON.stringify on rows as-is.
+    if (value.type === "Buffer" && Array.isArray(value.data)) {
+      return Buffer.from(value.data);
+    }
+  }
+  return value;
+};
+
+const buildFullDatabaseExport = () => {
+  const tableNames = getTables();
+  const insertOrder = topoSortTablesByForeignKeys(tableNames);
+  const tables = [];
+
+  for (const name of insertOrder) {
+    const columnInfo = getTableColumnInfo(name);
+    const columns = columnInfo.map((col) => col.name);
+    const rawRows = all(`SELECT * FROM ${quoteIdentifier(name)}`);
+    const rows = rawRows.map((row) => {
+      const next = {};
+      for (const column of columns) {
+        next[column] = serializeBackupCell(row[column]);
+      }
+      return next;
+    });
+    tables.push({ name, columns, rows });
+  }
+
+  const sequences = {};
+  const sequenceExists =
+    all("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'sqlite_sequence' LIMIT 1")
+      .length > 0;
+  if (sequenceExists) {
+    for (const row of all("SELECT name, seq FROM sqlite_sequence")) {
+      if (tableNames.includes(row.name)) {
+        sequences[row.name] = Number(row.seq) || 0;
+      }
+    }
+  }
+
+  return {
+    format: HUB_FULL_BACKUP_FORMAT,
+    version: HUB_FULL_BACKUP_VERSION,
+    exported_at: new Date().toISOString(),
+    app_version: readAppPackageVersion(),
+    table_count: tables.length,
+    row_count: tables.reduce((sum, table) => sum + table.rows.length, 0),
+    tables,
+    sequences,
+  };
+};
+
+const rebuildSqliteSequences = (tableNames, preferredSequences = {}) => {
+  const sequenceExists =
+    all("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'sqlite_sequence' LIMIT 1")
+      .length > 0;
+  if (!sequenceExists) {
+    return;
+  }
+
+  for (const tableName of tableNames) {
+    const columns = getTableColumnInfo(tableName);
+    const pk = columns.find((col) => Number(col.pk) === 1);
+    if (!pk || !/INT/i.test(String(pk.type || "INTEGER"))) {
+      continue;
+    }
+
+    const maxRow = all(
+      `SELECT MAX(${quoteIdentifier(pk.name)}) AS max_id FROM ${quoteIdentifier(tableName)}`
+    )[0];
+    const maxId = Number(maxRow?.max_id);
+    const preferred = Number(preferredSequences?.[tableName]);
+    const seq = Math.max(
+      Number.isFinite(maxId) ? maxId : 0,
+      Number.isFinite(preferred) ? preferred : 0
+    );
+    if (seq <= 0) {
+      run("DELETE FROM sqlite_sequence WHERE name = ?", [tableName]);
+      continue;
+    }
+    run("DELETE FROM sqlite_sequence WHERE name = ?", [tableName]);
+    run("INSERT INTO sqlite_sequence (name, seq) VALUES (?, ?)", [tableName, seq]);
+  }
+};
+
+/**
+ * Replace all application table data from a hub-full-backup export.
+ * Requires confirm: "IMPORT". Does not restore attachment/image files on disk.
+ */
+const performFullDatabaseImport = (actingUser, body = {}) => {
+  if (String(body?.confirm || "").trim().toUpperCase() !== "IMPORT") {
+    throw new Error('Type IMPORT to confirm replacing all database records.');
+  }
+
+  const backup = body?.backup && typeof body.backup === "object" ? body.backup : body;
+  if (!backup || typeof backup !== "object") {
+    throw new Error("Backup payload is required.");
+  }
+  if (backup.format !== HUB_FULL_BACKUP_FORMAT) {
+    throw new Error(`Unsupported backup format. Expected "${HUB_FULL_BACKUP_FORMAT}".`);
+  }
+  if (Number(backup.version) !== HUB_FULL_BACKUP_VERSION) {
+    throw new Error(`Unsupported backup version. Expected ${HUB_FULL_BACKUP_VERSION}.`);
+  }
+  if (!Array.isArray(backup.tables)) {
+    throw new Error("Backup tables array is required.");
+  }
+
+  const existingTables = getTables();
+  const existingSet = new Set(existingTables);
+  const backupByName = new Map();
+  const unknownTables = [];
+
+  for (const entry of backup.tables) {
+    const name = entry?.name;
+    if (!name || typeof name !== "string") {
+      throw new Error("Each backup table entry must include a name.");
+    }
+    if (!existingSet.has(name)) {
+      unknownTables.push(name);
+      continue;
+    }
+    if (!Array.isArray(entry.rows)) {
+      throw new Error(`Backup table "${name}" is missing a rows array.`);
+    }
+    backupByName.set(name, entry);
+  }
+
+  if (unknownTables.length > 0) {
+    throw new Error(
+      `Backup contains unknown tables for this schema: ${unknownTables.slice(0, 8).join(", ")}${
+        unknownTables.length > 8 ? "…" : ""
+      }`
+    );
+  }
+
+  const deleteOrder = [...topoSortTablesByForeignKeys(existingTables)].reverse();
+  const insertOrder = topoSortTablesByForeignKeys([...backupByName.keys()]);
+  const inserted = {};
+  const clearedTables = [];
+  const skippedColumns = {};
+  const missingFromBackup = existingTables.filter((name) => !backupByName.has(name));
+
+  runInTransaction(() => {
+    for (const tableName of deleteOrder) {
+      run(`DELETE FROM ${quoteIdentifier(tableName)}`);
+      clearedTables.push(tableName);
+    }
+    clearSqliteSequences(existingTables);
+
+    for (const tableName of insertOrder) {
+      const entry = backupByName.get(tableName);
+      const columnInfo = getTableColumnInfo(tableName);
+      const liveColumns = new Set(columnInfo.map((col) => col.name));
+      let rowCount = 0;
+
+      for (const row of entry.rows) {
+        if (!row || typeof row !== "object") {
+          continue;
+        }
+        const columns = Object.keys(row).filter((key) => liveColumns.has(key));
+        const ignored = Object.keys(row).filter((key) => !liveColumns.has(key));
+        if (ignored.length > 0) {
+          skippedColumns[tableName] = [
+            ...new Set([...(skippedColumns[tableName] || []), ...ignored]),
+          ];
+        }
+        if (columns.length === 0) {
+          continue;
+        }
+
+        const placeholders = columns.map(() => "?").join(", ");
+        const sql = `INSERT INTO ${quoteIdentifier(tableName)} (${columns
+          .map((col) => quoteIdentifier(col))
+          .join(", ")}) VALUES (${placeholders})`;
+        const values = columns.map((col) => deserializeBackupCell(row[col]));
+        run(sql, values);
+        rowCount += 1;
+      }
+
+      inserted[tableName] = rowCount;
+    }
+
+    rebuildSqliteSequences(existingTables, backup.sequences || {});
+  });
+
+  // Prefer keeping the acting admin signed in when their username still exists.
+  const actingUsername = actingUser?.username;
+  const actingToken = body?.__sessionToken || null;
+  const restoredUser = actingUsername
+    ? all(
+        `SELECT id, username, display_name FROM ${USERS_TABLE} WHERE username = ? LIMIT 1`,
+        [actingUsername]
+      )[0]
+    : null;
+
+  let requireRelogin = false;
+  if (restoredUser) {
+    const roles = getUserRoles(restoredUser.id);
+    const refreshedUser = {
+      id: restoredUser.id,
+      username: restoredUser.username,
+      display_name: restoredUser.display_name,
+      roles,
+    };
+    let keptSession = false;
+    for (const [token, session] of sessions.entries()) {
+      if (actingToken && token === actingToken) {
+        session.user = refreshedUser;
+        keptSession = true;
+        continue;
+      }
+      sessions.delete(token);
+    }
+    requireRelogin = !keptSession;
+  } else {
+    requireRelogin = true;
+    sessions.clear();
+  }
+
+  return {
+    ok: true,
+    require_relogin: requireRelogin,
+    restored_user: restoredUser
+      ? {
+          id: restoredUser.id,
+          username: restoredUser.username,
+          display_name: restoredUser.display_name,
+        }
+      : null,
+    cleared_tables: clearedTables,
+    inserted,
+    inserted_rows: Object.values(inserted).reduce((sum, count) => sum + count, 0),
+    skipped_columns: skippedColumns,
+    missing_from_backup: missingFromBackup,
+    exported_at: backup.exported_at || null,
+    app_version: backup.app_version || null,
   };
 };
 
@@ -7120,7 +7670,7 @@ const getCashFlowSankey = (month, accountId = null) => {
   };
 };
 
-const GEMINI_RECEIPT_MODEL = "gemini-3.1-flash-lite";
+const GEMINI_RECEIPT_MODEL = GEMINI_DEFAULT_MODEL;
 
 const normalizeReceiptImagePayload = (imageBase64, mimeType) => {
   let data = String(imageBase64 || "").trim();
@@ -7188,19 +7738,12 @@ const findExpenseCategoryByName = (suggestedName) => {
 };
 
 const scanReceiptFromImage = async ({ image_base64, mime_type } = {}) => {
-  const apiKey = process.env.GEMINI_API_KEY?.trim();
-  if (!apiKey) {
-    throw new Error(
-      "Receipt scanning is not configured. Add GEMINI_API_KEY to your .env file and restart the server."
-    );
-  }
-
   const { data, mimeType } = normalizeReceiptImagePayload(image_base64, mime_type);
 
   const prompt = [
     "You are extracting data from a purchase receipt photo for a personal budget app.",
     "Return ONLY valid JSON with these keys:",
-    '{',
+    "{",
     '  "merchant": string,',
     '  "date": "YYYY-MM-DD" or null,',
     '  "total": number (positive grand total paid),',
@@ -7213,57 +7756,23 @@ const scanReceiptFromImage = async ({ image_base64, mime_type } = {}) => {
     "Do not invent a total; if unreadable set total to null and lower confidence.",
   ].join("\n");
 
-  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_RECEIPT_MODEL}:generateContent?key=${encodeURIComponent(apiKey)}`;
-
-  const response = await fetch(endpoint, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      contents: [
-        {
-          role: "user",
-          parts: [
-            { text: prompt },
-            {
-              inline_data: {
-                mime_type: mimeType,
-                data,
-              },
-            },
-          ],
-        },
-      ],
-      generationConfig: {
-        temperature: 0.1,
-        responseMimeType: "application/json",
-      },
-    }),
-  });
-
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    const message =
-      payload?.error?.message ||
-      payload?.error?.status ||
-      `Gemini request failed (${response.status}).`;
-    throw new Error(message);
-  }
-
-  const text =
-    payload?.candidates?.[0]?.content?.parts?.map((part) => part.text || "").join("") || "";
-  if (!text.trim()) {
-    throw new Error("Gemini returned an empty receipt response.");
-  }
-
   let parsed;
   try {
-    parsed = JSON.parse(text);
-  } catch {
-    const fenced = text.match(/\{[\s\S]*\}/);
-    if (!fenced) {
-      throw new Error("Could not parse receipt data from Gemini.");
+    parsed = await callGeminiJson({
+      prompt,
+      temperature: 0.1,
+      model: GEMINI_RECEIPT_MODEL,
+      inlineImages: [{ mimeType, data }],
+      emptyError: "Gemini returned an empty receipt response.",
+      parseError: "Could not parse receipt data from Gemini.",
+    });
+  } catch (error) {
+    if (/not configured|GEMINI_API_KEY/i.test(error.message)) {
+      throw new Error(
+        "Receipt scanning is not configured. Add GEMINI_API_KEY to your .env file and restart the server."
+      );
     }
-    parsed = JSON.parse(fenced[0]);
+    throw error;
   }
 
   const merchant = String(parsed.merchant || "").trim();
@@ -8646,6 +9155,19 @@ seedNavigation();
 seedCategoryFinance();
 captureNetWorthSnapshot();
 
+/** Close the shared DB handle (used by the migrate CLI so Node can exit). */
+export function closeSqliteDatabase() {
+  try {
+    db.close();
+  } catch (error) {
+    schemaWarn(`Database close: ${error?.message || error}`);
+  }
+}
+
+export function getSqliteDatabasePath() {
+  return dbPath;
+}
+
 export function sqliteApiPlugin() {
   return {
     name: "sqlite-api-plugin",
@@ -9024,6 +9546,45 @@ export function sqliteApiPlugin() {
               json(res, 200, performZeroBoot(actingUser, body));
             } catch (zeroBootError) {
               sendApiError(res, req, 400, zeroBootError, { function_name: "performZeroBoot" });
+            }
+            return;
+          }
+
+          if (req.method === "GET" && requestPath === "/api/admin/export-all") {
+            const actingUser = requireAdmin(req, res);
+            if (!actingUser) return;
+            try {
+              const payload = buildFullDatabaseExport();
+              const stamp = new Date().toISOString().slice(0, 10);
+              res.statusCode = 200;
+              res.setHeader("Content-Type", "application/json; charset=utf-8");
+              res.setHeader(
+                "Content-Disposition",
+                `attachment; filename="hub-backup-${stamp}.json"`
+              );
+              res.end(JSON.stringify(payload));
+            } catch (exportError) {
+              sendApiError(res, req, 500, exportError, { function_name: "buildFullDatabaseExport" });
+            }
+            return;
+          }
+
+          if (req.method === "POST" && requestPath === "/api/admin/import-all") {
+            const actingUser = requireAdmin(req, res);
+            if (!actingUser) return;
+            const body = await readBody(req);
+            try {
+              const session = getSessionRecord(req, { touch: false });
+              json(
+                res,
+                200,
+                performFullDatabaseImport(actingUser, {
+                  ...body,
+                  __sessionToken: session?.token || null,
+                })
+              );
+            } catch (importError) {
+              sendApiError(res, req, 400, importError, { function_name: "performFullDatabaseImport" });
             }
             return;
           }
@@ -10639,6 +11200,16 @@ export function sqliteApiPlugin() {
               });
               return;
             }
+          }
+
+          // ── Training endpoints ──────────────────────────────────────────
+          if (await handleTrainingApi(req, res, getSessionUser)) {
+            return;
+          }
+
+          // ── Calendar endpoints ──────────────────────────────────────────
+          if (await handleCalendarApi(req, res, getSessionUser)) {
+            return;
           }
 
           sendApiError(res, req, 404, "API route not found.", { function_name: "sqliteApiPlugin" });

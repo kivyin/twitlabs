@@ -3,8 +3,9 @@ import { Button, Modal } from "../ui";
 
 /**
  * Shared confirmation dialog built on the accessible Modal shell.
- * Use this for every destructive / confirm prompt instead of window.confirm
- * or a one-off modal card so all confirms share the same look and behavior.
+ * Prefer `useConfirmDialog()` for async confirm flows in any app/CRUD page.
+ * Prefer this component directly when you already manage open state.
+ * Do not use window.confirm.
  */
 function ConfirmModal({
   open = true,

@@ -1,7 +1,7 @@
 {
   "name": "my-first-react-app",
   "private": true,
-  "version": "1.9.79",
+  "version": "1.11.0",
   "type": "module",
   "repository": {
     "type": "git",
@@ -10,6 +10,9 @@
   "homepage": "https://github.com/kivyin/twitlabs",
   "scripts": {
     "dev": "vite --host 0.0.0.0 --port 5173 --strictPort",
+    "migrate": "node scripts/migrate-schema.mjs",
+    "postinstall": "node scripts/migrate-schema.mjs",
+    "prebuild": "node scripts/migrate-schema.mjs",
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview",

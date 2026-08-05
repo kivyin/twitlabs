@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { isFullWidthFormField } from "../utils/formLayout";
+import LockableUrlField, { toClickableHref } from "./LockableUrlField";
 import FormField from "./ui/FormField";
 
 function MaskedPasswordInput({ id, value, onChange, canReveal, label, placeholder = "" }) {
@@ -58,6 +59,7 @@ function TableFormFields({
     const label = columnLabels[column.name] ?? column.name;
     const fullWidth = isFullWidthFormField(inputType, column.name);
     const fieldId = `field-${column.name}`;
+    const clickableHref = inputType === "url" ? toClickableHref(displayValue) : null;
 
     return (
       <FormField
@@ -68,7 +70,22 @@ function TableFormFields({
         className={fullWidth ? "form-field-full" : undefined}
       >
         {readOnly ? (
-          <input id={fieldId} type="text" value={displayValue} readOnly className="readonly-field" />
+          clickableHref ? (
+            <div className="lockable-url-field is-locked">
+              <a
+                id={fieldId}
+                className="lockable-url-link"
+                href={clickableHref}
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label={`Open ${label}`}
+              >
+                {String(displayValue).trim()}
+              </a>
+            </div>
+          ) : (
+            <input id={fieldId} type="text" value={displayValue} readOnly className="readonly-field" />
+          )
         ) : foreignKeys[column.name] ? (
           <select
             id={fieldId}
@@ -109,6 +126,15 @@ function TableFormFields({
             canReveal={canRevealSecrets}
             label={label}
             placeholder={secretPlaceholders[column.name] ?? ""}
+          />
+        ) : inputType === "url" ? (
+          <LockableUrlField
+            id={fieldId}
+            value={displayValue}
+            onChange={(event) => onChange(column.name, event.target.value)}
+            disabled={isDisabled}
+            label={label}
+            {...extraInputProps}
           />
         ) : (
           <input
