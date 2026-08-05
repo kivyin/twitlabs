@@ -9,6 +9,7 @@ import {
   updateShoppingItem,
   updateShoppingList,
 } from "../../api/calendarApi";
+import { useConfirmDialog } from "../../hooks/useConfirmDialog";
 
 const NEW_LIST_VALUE = "__new__";
 
@@ -37,6 +38,7 @@ function TrashIcon() {
 }
 
 function CalendarShoppingModal({ open, onClose }) {
+  const { confirm, confirmModal } = useConfirmDialog();
   const [lists, setLists] = useState([]);
   const [activeListId, setActiveListId] = useState(null);
   const [activeList, setActiveList] = useState(null);
@@ -250,7 +252,20 @@ function CalendarShoppingModal({ open, onClose }) {
 
   const handleDeleteList = async () => {
     if (!activeListId) return;
-    if (!window.confirm("Delete this shopping list and all of its items?")) return;
+    const listName = activeList?.name?.trim() || "this shopping list";
+    const itemCount = Number(activeList?.items?.length ?? activeList?.item_count ?? 0);
+    const ok = await confirm({
+      title: "Delete shopping list?",
+      message:
+        itemCount > 0
+          ? `This will permanently remove “${listName}” and its ${itemCount} item${itemCount === 1 ? "" : "s"}.`
+          : `This will permanently remove “${listName}”.`,
+      confirmLabel: "Delete list",
+      cancelLabel: "Cancel",
+      confirmVariant: "danger",
+    });
+    if (!ok) return;
+
     setBusy(true);
     setError("");
     try {
@@ -354,6 +369,7 @@ function CalendarShoppingModal({ open, onClose }) {
   const canMoveItems = otherActiveLists.length > 0;
 
   return (
+    <>
     <div className="calendar-modal-backdrop" role="presentation" onClick={onClose}>
       <div
         className="calendar-modal calendar-shopping-modal"
@@ -594,6 +610,8 @@ function CalendarShoppingModal({ open, onClose }) {
         )}
       </div>
     </div>
+    {confirmModal}
+    </>
   );
 }
 

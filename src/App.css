@@ -3278,6 +3278,11 @@ input.money-negative {
   min-height: 240px;
 }
 
+/* Keep Nivo sankey SVG paints from inheriting near-black LCARS multiply blending. */
+[data-theme="lcars"] .sankey-chart-wrap svg path {
+  mix-blend-mode: normal;
+}
+
 .sankey-footnote {
   margin: 0;
   font-size: 0.78rem;

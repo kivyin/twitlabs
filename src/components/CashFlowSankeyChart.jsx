@@ -149,7 +149,11 @@ function CashFlowSankeyChart({
     };
   }, [resolvedTheme]);
 
-  const hubFallback = resolvedTheme === "lcars" ? LCARS_HUB_COLOR : DEFAULT_HUB_COLOR;
+  const isLcars = resolvedTheme === "lcars";
+  const hubFallback = isLcars ? LCARS_HUB_COLOR : DEFAULT_HUB_COLOR;
+  // Nivo defaults to multiply blending — that turns colored links nearly black on LCARS.
+  const linkBlendMode = isLcars ? "normal" : "multiply";
+  const linkOpacity = isLcars ? 0.7 : 0.45;
 
   const categoryCount = (payload.income?.length || 0) + (payload.expenses?.length || 0);
   const chartHeight = fullPage
@@ -239,11 +243,14 @@ function CashFlowSankeyChart({
               nodeHoverOthersOpacity={0.35}
               nodeThickness={18}
               nodeSpacing={nodeSpacing}
-              nodeBorderWidth={0}
+              nodeBorderWidth={isLcars ? 1 : 0}
+              nodeBorderColor={isLcars ? themeColors.border : undefined}
               nodeBorderRadius={3}
-              linkOpacity={0.45}
-              linkHoverOthersOpacity={0.1}
+              linkOpacity={linkOpacity}
+              linkHoverOpacity={isLcars ? 0.9 : 0.6}
+              linkHoverOthersOpacity={isLcars ? 0.2 : 0.1}
               linkContract={2}
+              linkBlendMode={linkBlendMode}
               enableLinkGradient
               label={(node) => node.nodeLabel ?? node.id}
               labelPosition="outside"
