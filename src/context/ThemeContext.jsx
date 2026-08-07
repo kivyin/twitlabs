@@ -15,9 +15,10 @@ export function ThemeProvider({ children }) {
   const [resolvedTheme, setResolvedTheme] = useState(() => resolveTheme(getStoredTheme()));
 
   const setPreference = useCallback((nextPreference) => {
-    setPreferenceState(nextPreference);
-    localStorage.setItem(THEME_STORAGE_KEY, nextPreference);
-    setResolvedTheme(applyTheme(nextPreference));
+    const normalized = nextPreference === "ironman" ? "studiotwitty" : nextPreference;
+    setPreferenceState(normalized);
+    localStorage.setItem(THEME_STORAGE_KEY, normalized);
+    setResolvedTheme(applyTheme(normalized));
   }, []);
 
   const cycleTheme = useCallback(() => {

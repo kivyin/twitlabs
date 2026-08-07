@@ -1,0 +1,591 @@
+/* StudioTwitty HUD theme — cyan glow on deep black, orange critical accents. */
+
+[data-theme="studiotwitty"] {
+  color-scheme: dark;
+
+  --brand: #29d7ff;
+  --brand-strong: #7aefff;
+  --brand-soft: rgba(41, 215, 255, 0.14);
+  --brand-ring: rgba(41, 215, 255, 0.45);
+  --on-brand: #031018;
+
+  --text: #e8f7ff;
+  --muted-text: #7eb8c9;
+  --faint-text: #4f7f90;
+  --surface: #071018;
+  --surface-2: #0b1822;
+  --surface-muted: #102230;
+  --surface-glass: rgba(7, 16, 24, 0.9);
+  --bg: #020507;
+  --bg-accent: #061520;
+  --bg-accent-2: #0a1c28;
+
+  --border: rgba(41, 215, 255, 0.28);
+  --border-strong: rgba(41, 215, 255, 0.55);
+
+  --success: #3dffb0;
+  --success-soft: rgba(61, 255, 176, 0.12);
+  --success-border: rgba(61, 255, 176, 0.4);
+  --danger: #ff5a3d;
+  --danger-soft: rgba(255, 90, 61, 0.14);
+  --danger-border: rgba(255, 90, 61, 0.45);
+  --danger-bg-soft: rgba(255, 90, 61, 0.12);
+  --danger-text: #ffb0a0;
+  --warning: #ff9a2e;
+
+  --overlay-backdrop: rgba(0, 4, 8, 0.72);
+  --code-bg: #01080e;
+  --code-text: #b8f0ff;
+  --input-bg: #08141c;
+
+  --shadow-xs: 0 0 0 1px rgba(41, 215, 255, 0.12);
+  --shadow-sm: 0 0 18px rgba(41, 215, 255, 0.12);
+  --shadow-md: 0 0 32px rgba(41, 215, 255, 0.18);
+  --shadow-brand: 0 0 24px rgba(41, 215, 255, 0.35);
+
+  --font-sans: "Orbitron", "Share Tech Mono", "Segoe UI", sans-serif;
+
+  --jarvis-cyan: #29d7ff;
+  --jarvis-cyan-dim: #0e6f88;
+  --jarvis-cyan-glow: rgba(41, 215, 255, 0.55);
+  --jarvis-orange: #ff7a1a;
+  --jarvis-orange-glow: rgba(255, 122, 26, 0.45);
+  --jarvis-white: #f2fbff;
+
+  --chart-1: #29d7ff;
+  --chart-2: #ff7a1a;
+  --chart-3: #3dffb0;
+  --chart-4: #7aefff;
+  --chart-5: #ffb347;
+  --chart-6: #4aa8ff;
+  --chart-7: #ff5a3d;
+  --chart-8: #a8fff0;
+  --chart-9: #c8e7ff;
+  --chart-10: #ff9a2e;
+
+  --dial-size: 112px;
+  --dial-hub-size: var(--dial-size);
+  --dial-icon-radius: 132px;
+  --dial-label-radius: 210px;
+  --dial-inset: 0;
+}
+
+[data-theme="studiotwitty"] body {
+  background:
+    radial-gradient(700px 420px at 12% 8%, rgba(41, 215, 255, 0.1), transparent 55%),
+    radial-gradient(900px 520px at 90% 100%, rgba(255, 122, 26, 0.06), transparent 50%),
+    linear-gradient(180deg, #03080c 0%, #020507 55%, #010305 100%);
+  color: var(--text);
+}
+
+[data-theme="studiotwitty"] .shell.shell-studiotwitty {
+  --sidebar-width: 0px;
+  --sidebar-collapsed-width: 0px;
+  background: transparent;
+}
+
+[data-theme="studiotwitty"] .shell-studiotwitty .sidebar-rail {
+  display: none;
+}
+
+[data-theme="studiotwitty"] .shell-studiotwitty .shell-body {
+  width: 100%;
+  /* Keep scrolling in the page body, not under the dog-ear dial. */
+  overscroll-behavior: contain;
+}
+
+[data-theme="studiotwitty"] .shell-studiotwitty .shell-inner {
+  padding: 1.25rem;
+}
+
+[data-theme="studiotwitty"] .panel,
+[data-theme="studiotwitty"] .form-shell,
+[data-theme="studiotwitty"] .account-edit-overview {
+  border-color: var(--border);
+  box-shadow:
+    0 0 0 1px rgba(41, 215, 255, 0.08),
+    0 0 28px rgba(41, 215, 255, 0.06);
+  background:
+    linear-gradient(145deg, rgba(41, 215, 255, 0.05), transparent 40%),
+    var(--surface);
+}
+
+[data-theme="studiotwitty"] .page-header {
+  border-color: var(--border);
+}
+
+[data-theme="studiotwitty"] a,
+[data-theme="studiotwitty"] .record-link {
+  text-shadow: 0 0 10px rgba(41, 215, 255, 0.25);
+}
+
+[data-theme="studiotwitty"] .theme-toggle-menu,
+[data-theme="studiotwitty"] .auth-theme-toggle {
+  background: var(--surface);
+  border-color: var(--border);
+  color: var(--text);
+}
+
+[data-theme="studiotwitty"] .theme-preference-select,
+[data-theme="studiotwitty"] .theme-toggle-menu .theme-preference-select {
+  color: var(--text);
+  background: var(--surface-2);
+  border-color: var(--border);
+  color-scheme: dark;
+}
+
+[data-theme="studiotwitty"] .theme-toggle-menu .theme-preference-select {
+  background: transparent;
+}
+
+[data-theme="studiotwitty"] .theme-preference-select option {
+  background: #0b1822;
+  color: #e8f7ff;
+}
+
+[data-theme="studiotwitty"] .money-positive {
+  color: var(--success);
+}
+
+[data-theme="studiotwitty"] .money-negative {
+  color: var(--danger);
+}
+
+/* ── Centered arc navigation ─────────────────────────────────────── */
+
+.ironman-dial {
+  --dial-hub-size: var(--dial-size);
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: grid;
+  /* Hub at top-center; arc opens downward into the page. */
+  justify-items: center;
+  align-items: start;
+  padding-top: clamp(0.5rem, 1.5vw, 1rem);
+  pointer-events: none;
+  user-select: none;
+  overscroll-behavior: contain;
+  touch-action: none;
+}
+
+.ironman-dial.has-submenu {
+  --dial-hub-size: calc(var(--dial-size) * 1.35);
+  --dial-icon-radius: 148px;
+  --dial-label-radius: 228px;
+}
+
+.ironman-dial-backdrop {
+  position: absolute;
+  inset: 0;
+  border: none;
+  padding: 0;
+  margin: 0;
+  background: rgba(1, 6, 10, 0.72);
+  backdrop-filter: blur(7px);
+  -webkit-backdrop-filter: blur(7px);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 180ms ease;
+  cursor: pointer;
+}
+
+.ironman-dial.is-open .ironman-dial-backdrop {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.ironman-dial-stage {
+  position: relative;
+  /* Hub along the top edge of the stage; arc + labels extend downward. */
+  width: calc(var(--dial-label-radius) * 2 + 5rem);
+  height: calc(var(--dial-hub-size) / 2 + var(--dial-label-radius) + 4rem);
+  pointer-events: none;
+}
+
+.ironman-dial:not(.is-open) .ironman-dial-stage {
+  width: var(--dial-size);
+  height: var(--dial-size);
+}
+
+.ironman-dial-hub {
+  position: absolute;
+  top: calc(var(--dial-hub-size) / 2);
+  left: 50%;
+  width: var(--dial-hub-size);
+  height: var(--dial-hub-size);
+  border-radius: 50%;
+  pointer-events: auto;
+  border: 2px solid var(--jarvis-cyan);
+  background:
+    radial-gradient(circle at 50% 42%, rgba(122, 239, 255, 0.28), transparent 42%),
+    radial-gradient(circle at 50% 50%, #0a2430 0%, #031018 68%, #01060a 100%);
+  box-shadow:
+    0 0 0 4px rgba(41, 215, 255, 0.14),
+    0 0 28px var(--jarvis-cyan-glow),
+    inset 0 0 20px rgba(41, 215, 255, 0.22);
+  color: var(--jarvis-cyan);
+  overflow: hidden;
+  transform: translate(-50%, -50%);
+  transition:
+    width 180ms ease,
+    height 180ms ease,
+    transform 180ms ease,
+    box-shadow 180ms ease,
+    border-color 180ms ease,
+    background 180ms ease;
+}
+
+.ironman-dial-hub.is-open-hub:not(.is-parent-back) {
+  border-color: var(--jarvis-cyan);
+  box-shadow:
+    0 0 0 5px rgba(41, 215, 255, 0.2),
+    0 0 40px var(--jarvis-cyan-glow),
+    inset 0 0 24px rgba(41, 215, 255, 0.28);
+}
+
+.ironman-dial-hub-svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  position: relative;
+  z-index: 1;
+}
+
+.ironman-dial-wedge {
+  fill: rgba(41, 215, 255, 0.1);
+  stroke: rgba(41, 215, 255, 0.5);
+  stroke-width: 1.25;
+  cursor: pointer;
+  transition: fill 140ms ease, stroke 140ms ease;
+}
+
+.ironman-dial-wedge:hover,
+.ironman-dial-wedge:focus {
+  fill: rgba(41, 215, 255, 0.24);
+  stroke: var(--jarvis-cyan);
+  outline: none;
+}
+
+.ironman-dial-wedge.is-active {
+  fill: rgba(41, 215, 255, 0.3);
+  stroke: var(--jarvis-orange);
+  filter: drop-shadow(0 0 6px var(--jarvis-orange-glow));
+}
+
+.ironman-dial-wedge-label {
+  fill: var(--jarvis-cyan);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  pointer-events: none;
+  text-shadow: 0 0 8px var(--jarvis-cyan-glow);
+}
+
+.ironman-dial-hub-svg .ironman-dial-wedge-label.is-active {
+  fill: var(--jarvis-white);
+}
+
+.ironman-dial.is-open {
+  pointer-events: auto;
+}
+
+.ironman-dial.is-open .ironman-dial-stage {
+  pointer-events: none;
+}
+
+.ironman-dial-close,
+.ironman-dial-parent-back {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.2rem;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0.6rem;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.ironman-dial-hub.is-parent-back {
+  border-color: var(--jarvis-orange);
+  background:
+    radial-gradient(circle at 50% 42%, rgba(255, 200, 120, 0.38), transparent 46%),
+    radial-gradient(circle at 50% 50%, #3a1c08 0%, #1a0c04 70%, #0a0502 100%);
+  box-shadow:
+    0 0 0 5px rgba(255, 122, 26, 0.24),
+    0 0 42px var(--jarvis-orange-glow),
+    inset 0 0 26px rgba(255, 154, 46, 0.35);
+  color: #ffd7a8;
+}
+
+.ironman-dial-parent-back-name {
+  max-width: 85%;
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  text-align: center;
+  line-height: 1.15;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-shadow: 0 0 12px var(--jarvis-orange-glow);
+}
+
+.ironman-dial-parent-back-meta {
+  font-size: 0.58rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: #ffb347;
+}
+
+.ironman-dial-mode-row {
+  position: absolute;
+  top: calc(var(--dial-hub-size) + 0.55rem);
+  left: 50%;
+  display: flex;
+  gap: 0.35rem;
+  transform: translateX(-50%);
+  pointer-events: auto;
+  z-index: 2;
+}
+
+.ironman-dial-mode-chip {
+  min-height: 1.7rem;
+  padding: 0.2rem 0.55rem;
+  border: 1px solid rgba(41, 215, 255, 0.4);
+  border-radius: 999px;
+  background: rgba(3, 14, 20, 0.9);
+  color: var(--muted-text);
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.ironman-dial-mode-chip.is-active,
+.ironman-dial-mode-chip:hover {
+  color: var(--jarvis-cyan);
+  border-color: var(--jarvis-cyan);
+  box-shadow: 0 0 12px rgba(41, 215, 255, 0.25);
+}
+
+.ironman-dial-ring {
+  position: absolute;
+  top: calc(var(--dial-hub-size) / 2);
+  left: 50%;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+
+.ironman-dial-item {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+
+.ironman-dial-spoke {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: calc(var(--dial-label-radius) - (var(--dial-hub-size) / 2) - 0.35rem);
+  height: 1px;
+  pointer-events: none;
+  transform-origin: 0 center;
+  transform: rotate(var(--item-angle, 0deg)) translateX(calc(var(--dial-hub-size) / 2 + 0.2rem));
+  background: linear-gradient(
+    90deg,
+    rgba(41, 215, 255, 0.55),
+    rgba(41, 215, 255, 0.28) 55%,
+    rgba(41, 215, 255, 0.08)
+  );
+  box-shadow: 0 0 8px rgba(41, 215, 255, 0.25);
+}
+
+.ironman-dial-item.is-child .ironman-dial-spoke {
+  background: linear-gradient(
+    90deg,
+    rgba(255, 122, 26, 0.6),
+    rgba(255, 122, 26, 0.3) 55%,
+    rgba(255, 122, 26, 0.08)
+  );
+  box-shadow: 0 0 8px rgba(255, 122, 26, 0.22);
+}
+
+.ironman-dial-item.is-focused .ironman-dial-spoke,
+.ironman-dial-item.is-active .ironman-dial-spoke {
+  height: 1.5px;
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.7),
+    rgba(41, 215, 255, 0.45) 60%,
+    rgba(41, 215, 255, 0.12)
+  );
+}
+
+.ironman-dial-icon-slot,
+.ironman-dial-label-slot {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 0;
+  height: 0;
+  transform: rotate(var(--item-angle, 0deg)) translateX(var(--item-radius));
+  pointer-events: auto;
+}
+
+.ironman-dial-item-face {
+  position: absolute;
+  top: 0;
+  left: 0;
+  /* Counter-rotate so icons and labels stay horizontal / readable. */
+  transform: rotate(calc(0deg - var(--item-angle, 0deg))) translate(-50%, -50%);
+  transform-origin: center center;
+}
+
+/* Keep labels outside the icon ring: left grows left, right grows right, bottom hangs down. */
+.ironman-dial-label-face {
+  transform: rotate(calc(0deg - var(--item-angle, 0deg))) translate(-50%, -50%);
+}
+
+.ironman-dial-label-slot[data-side="left"] .ironman-dial-label-face {
+  transform: rotate(calc(0deg - var(--item-angle, 0deg)))
+    translate(calc(-100% - 0.4rem), -50%);
+}
+
+.ironman-dial-label-slot[data-side="right"] .ironman-dial-label-face {
+  transform: rotate(calc(0deg - var(--item-angle, 0deg))) translate(0.4rem, -50%);
+}
+
+.ironman-dial-label-slot[data-side="bottom"] .ironman-dial-label-face {
+  transform: rotate(calc(0deg - var(--item-angle, 0deg))) translate(-50%, 0.35rem);
+}
+
+.ironman-dial-orb {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.65rem;
+  height: 2.65rem;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: var(--jarvis-cyan);
+  color: #031018;
+  box-shadow:
+    0 0 0 2px rgba(41, 215, 255, 0.25),
+    0 0 18px var(--jarvis-cyan-glow);
+  cursor: pointer;
+  transition:
+    transform 140ms ease,
+    background 140ms ease,
+    box-shadow 140ms ease;
+}
+
+.ironman-dial-orb:hover,
+.ironman-dial-orb.is-focused,
+.ironman-dial-orb.is-active {
+  transform: scale(1.08);
+  background: var(--jarvis-white);
+  box-shadow:
+    0 0 0 2px rgba(255, 255, 255, 0.35),
+    0 0 22px var(--jarvis-cyan-glow);
+}
+
+.ironman-dial-orb.is-child,
+.ironman-dial-entry.is-child.ironman-dial-orb {
+  background: var(--jarvis-orange);
+  color: #1a0c04;
+  box-shadow:
+    0 0 0 2px rgba(255, 122, 26, 0.3),
+    0 0 18px var(--jarvis-orange-glow);
+}
+
+.ironman-dial-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  min-height: 2rem;
+  padding: 0.35rem 0.85rem;
+  border-radius: 999px;
+  border: 1.5px solid var(--jarvis-cyan);
+  background: rgba(3, 14, 20, 0.88);
+  color: var(--jarvis-white);
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 650;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  box-shadow: 0 0 16px rgba(41, 215, 255, 0.2);
+  cursor: pointer;
+  transition:
+    background 140ms ease,
+    border-color 140ms ease,
+    box-shadow 140ms ease;
+}
+
+.ironman-dial-label:hover,
+.ironman-dial-label.is-focused,
+.ironman-dial-label.is-active {
+  background: rgba(41, 215, 255, 0.16);
+  border-color: var(--jarvis-white);
+  box-shadow: 0 0 20px var(--jarvis-cyan-glow);
+}
+
+.ironman-dial-label.is-child {
+  border-color: var(--jarvis-orange);
+  color: #ffd7a8;
+  box-shadow: 0 0 16px rgba(255, 122, 26, 0.22);
+}
+
+.ironman-dial-caret {
+  font-size: 0.95rem;
+  line-height: 1;
+}
+
+@media (max-width: 860px) {
+  .ironman-dial {
+    --dial-size: 88px;
+    --dial-icon-radius: 108px;
+    --dial-label-radius: 168px;
+    padding-top: 0.4rem;
+  }
+
+  .ironman-dial-stage {
+    width: min(100vw - 0.75rem, calc(var(--dial-label-radius) * 2 + 3rem));
+    height: min(100vh - 1.5rem, calc(var(--dial-hub-size) / 2 + var(--dial-label-radius) + 3rem));
+  }
+
+  .ironman-dial-label {
+    font-size: 0.64rem;
+    padding: 0.3rem 0.65rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ironman-dial-hub,
+  .ironman-dial-backdrop,
+  .ironman-dial-orb,
+  .ironman-dial-label,
+  .ironman-dial-wedge {
+    transition: none;
+  }
+}
+
+html[data-calendar-kiosk="1"] .ironman-dial {
+  display: none;
+}

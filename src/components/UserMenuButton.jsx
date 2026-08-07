@@ -1,5 +1,30 @@
 import { useEffect, useRef, useState } from "react";
+import { useBrowseStack } from "../context/BrowseStackContext";
+import { HISTORY_LIMIT_OPTIONS } from "../utils/browseStack";
 import { ThemePreferenceSelect } from "./ThemeToggle";
+
+export function HistoryLimitSelect({ id = "history-limit-preference", className = "" }) {
+  const { historyLimit, setHistoryLimit } = useBrowseStack();
+
+  return (
+    <label className={`theme-preference-field${className ? ` ${className}` : ""}`} htmlFor={id}>
+      <span className="theme-preference-label">History size</span>
+      <select
+        id={id}
+        className="theme-preference-select"
+        value={historyLimit}
+        onChange={(event) => setHistoryLimit(Number(event.target.value))}
+        aria-label="Browse history size"
+      >
+        {HISTORY_LIMIT_OPTIONS.map((option) => (
+          <option key={option} value={option}>
+            Last {option} pages
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
 
 /**
  * Logged-in user control with preferences (theme) and Sign out.
@@ -50,6 +75,7 @@ function UserMenuButton({ displayName = "", onSignOut, className = "", compact =
         <div className="user-menu-popover" role="menu">
           <div className="user-menu-section" onClick={(event) => event.stopPropagation()}>
             <ThemePreferenceSelect id="user-menu-theme-preference" />
+            <HistoryLimitSelect id="user-menu-history-limit" />
           </div>
           <div className="user-menu-divider" role="separator" />
           <button

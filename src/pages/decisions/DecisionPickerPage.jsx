@@ -256,9 +256,12 @@ function DecisionPickerPage() {
     const winnerIndex = Math.floor(Math.random() * items.length);
     const slice = 360 / items.length;
     // Pointer is at top (0°). Segment center for index i is at i*slice + slice/2.
-    // Wheel rotation should bring that center under the pointer.
+    // After rotate(R), local angle L appears at (L + R) mod 360 — land center at 0°.
     const targetCenter = winnerIndex * slice + slice / 2;
-    const finalRotation = rotation + FULL_TURNS * 360 + (360 - (targetCenter % 360));
+    const desiredMod = (360 - (targetCenter % 360)) % 360;
+    const currentMod = ((rotation % 360) + 360) % 360;
+    const delta = (desiredMod - currentMod + 360) % 360;
+    const finalRotation = rotation + FULL_TURNS * 360 + delta;
 
     setSpinning(true);
     setRotation(finalRotation);

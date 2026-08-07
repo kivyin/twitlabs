@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Antonio:wght@400;500;600;700&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Antonio:wght@400;500;600;700&family=Orbitron:wght@500;600;700&family=Share+Tech+Mono&display=swap"
       rel="stylesheet"
     />
     <meta name="theme-color" content="#2563eb" />
@@ -20,13 +20,15 @@
         var resolvedTheme =
           storedTheme === "lcars"
             ? "lcars"
-            : storedTheme === "dark"
-              ? "dark"
-              : storedTheme === "light"
-                ? "light"
-                : prefersDark
-                  ? "dark"
-                  : "light";
+            : storedTheme === "ironman" || storedTheme === "studiotwitty"
+              ? "studiotwitty"
+              : storedTheme === "dark"
+                ? "dark"
+                : storedTheme === "light"
+                  ? "light"
+                  : prefersDark
+                    ? "dark"
+                    : "light";
         document.documentElement.dataset.theme = resolvedTheme;
         document.documentElement.dataset.themePreference = storedTheme;
         document.documentElement.style.colorScheme = resolvedTheme === "light" ? "light" : "dark";

@@ -64,20 +64,17 @@ export function getSidebarHistoryLabel(path, { favorites = [], navItems = [] } =
 }
 
 /**
- * Newest-first unique history entries, excluding the current location.
+ * Newest-first visit history. Keeps duplicates (e.g. Back to a prior page).
+ * `currentPath` is accepted for call-site compatibility and ignored.
  */
-export function buildSidebarHistoryEntries(stack = [], currentPath = "") {
-  const current = typeof currentPath === "string" ? currentPath : "";
-  const seen = new Set();
+export function buildSidebarHistoryEntries(visits = [], _currentPath = "") {
   const entries = [];
 
-  for (let index = stack.length - 1; index >= 0; index -= 1) {
-    const path = stack[index];
-    if (!path || path === current || seen.has(path)) {
-      continue;
+  for (let index = visits.length - 1; index >= 0; index -= 1) {
+    const path = visits[index];
+    if (path) {
+      entries.push(path);
     }
-    seen.add(path);
-    entries.push(path);
   }
 
   return entries;

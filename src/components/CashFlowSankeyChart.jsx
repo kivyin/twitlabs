@@ -15,6 +15,10 @@ const LCARS_INCOME_COLORS = ["#66ccaa", "#66ff99", "#5ad8a6", "#88e0c0", "#a8f0d
 const LCARS_EXPENSE_COLORS = ["#ff5555", "#ff9933", "#ffcc99", "#cc6699", "#ff7a45", "#ffb3b3"];
 const LCARS_HUB_COLOR = "#ffd580";
 
+const IRONMAN_INCOME_COLORS = ["#3dffb0", "#29d7ff", "#7aefff", "#a8fff0", "#4aa8ff", "#66e0c8"];
+const IRONMAN_EXPENSE_COLORS = ["#ff5a3d", "#ff7a1a", "#ffb347", "#ff9a2e", "#ff8066", "#ffc08a"];
+const IRONMAN_HUB_COLOR = "#29d7ff";
+
 function readCssColor(variableName, fallback) {
   if (typeof window === "undefined") {
     return fallback;
@@ -25,9 +29,22 @@ function readCssColor(variableName, fallback) {
 
 function buildNodeColorMap(nodes, themeName) {
   const isLcars = themeName === "lcars";
-  const incomeColors = isLcars ? LCARS_INCOME_COLORS : DEFAULT_INCOME_COLORS;
-  const expenseColors = isLcars ? LCARS_EXPENSE_COLORS : DEFAULT_EXPENSE_COLORS;
-  const hubColor = isLcars ? LCARS_HUB_COLOR : DEFAULT_HUB_COLOR;
+  const isStudioTwitty = themeName === "studiotwitty" || themeName === "ironman";
+  const incomeColors = isLcars
+    ? LCARS_INCOME_COLORS
+    : isStudioTwitty
+      ? IRONMAN_INCOME_COLORS
+      : DEFAULT_INCOME_COLORS;
+  const expenseColors = isLcars
+    ? LCARS_EXPENSE_COLORS
+    : isStudioTwitty
+      ? IRONMAN_EXPENSE_COLORS
+      : DEFAULT_EXPENSE_COLORS;
+  const hubColor = isLcars
+    ? LCARS_HUB_COLOR
+    : isStudioTwitty
+      ? IRONMAN_HUB_COLOR
+      : DEFAULT_HUB_COLOR;
   const colors = {};
   let incomeIndex = 0;
   let expenseIndex = 0;
@@ -150,10 +167,16 @@ function CashFlowSankeyChart({
   }, [resolvedTheme]);
 
   const isLcars = resolvedTheme === "lcars";
-  const hubFallback = isLcars ? LCARS_HUB_COLOR : DEFAULT_HUB_COLOR;
-  // Nivo defaults to multiply blending — that turns colored links nearly black on LCARS.
-  const linkBlendMode = isLcars ? "normal" : "multiply";
-  const linkOpacity = isLcars ? 0.7 : 0.45;
+  const isStudioTwitty = resolvedTheme === "studiotwitty";
+  const isHudTheme = isLcars || isStudioTwitty;
+  const hubFallback = isLcars
+    ? LCARS_HUB_COLOR
+    : isStudioTwitty
+      ? IRONMAN_HUB_COLOR
+      : DEFAULT_HUB_COLOR;
+  // Nivo defaults to multiply blending — that turns colored links nearly black on dark HUDs.
+  const linkBlendMode = isHudTheme ? "normal" : "multiply";
+  const linkOpacity = isHudTheme ? 0.7 : 0.45;
 
   const categoryCount = (payload.income?.length || 0) + (payload.expenses?.length || 0);
   const chartHeight = fullPage
@@ -243,12 +266,12 @@ function CashFlowSankeyChart({
               nodeHoverOthersOpacity={0.35}
               nodeThickness={18}
               nodeSpacing={nodeSpacing}
-              nodeBorderWidth={isLcars ? 1 : 0}
-              nodeBorderColor={isLcars ? themeColors.border : undefined}
+              nodeBorderWidth={isHudTheme ? 1 : 0}
+              nodeBorderColor={isHudTheme ? themeColors.border : undefined}
               nodeBorderRadius={3}
               linkOpacity={linkOpacity}
-              linkHoverOpacity={isLcars ? 0.9 : 0.6}
-              linkHoverOthersOpacity={isLcars ? 0.2 : 0.1}
+              linkHoverOpacity={isHudTheme ? 0.9 : 0.6}
+              linkHoverOthersOpacity={isHudTheme ? 0.2 : 0.1}
               linkContract={2}
               linkBlendMode={linkBlendMode}
               enableLinkGradient

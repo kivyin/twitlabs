@@ -196,7 +196,7 @@ function Sidebar({
 }) {
   const { isAdmin } = useAuth();
   const { favorites, deleteFavorite, updateFavorite } = useFavorites();
-  const { stack, clearStack } = useBrowseStack();
+  const { visits, clearStack } = useBrowseStack();
   const { fullTitle } = useBranding();
   const { resolvedTheme } = useTheme();
   const isLcars = resolvedTheme === "lcars";
@@ -245,8 +245,8 @@ function Sidebar({
 
   const currentPath = locationToPath(location);
   const historyPaths = useMemo(
-    () => buildSidebarHistoryEntries(stack, currentPath),
-    [stack, currentPath]
+    () => buildSidebarHistoryEntries(visits, currentPath),
+    [visits, currentPath]
   );
 
   const compact = isCollapsed;
@@ -560,11 +560,11 @@ function Sidebar({
                     </button>
                   </div>
                 )}
-                {historyPaths.map((path) => {
+                {historyPaths.map((path, index) => {
                   const label = getSidebarHistoryLabel(path, { favorites, navItems });
                   return (
                     <NavLink
-                      key={path}
+                      key={`hist-${index}-${path}`}
                       to={path}
                       className={navItemClass}
                       onClick={onNavigate}

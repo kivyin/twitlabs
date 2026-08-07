@@ -1,34 +1,58 @@
-import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate, useNavigationType } from "react-router-dom";
-import { useAuth } from "./AuthContext";
+import { getUserPreference, setUserPreference } from "../api/preferencesApi";
 import {
+  BROWSE_HISTORY_LIMIT_KEY,
   BROWSE_STACK_NAV_KEY,
   clearBrowseStackStorage,
+  DEFAULT_HISTORY_LIMIT,
   isSafeBrowsePath,
   loadBrowseStack,
+  loadBrowseVisits,
   locationToPath,
+  normalizeHistoryLimit,
+  readLocalHistoryLimit,
   saveBrowseStack,
+  saveBrowseVisits,
   shouldTrackBrowsePath,
+  writeLocalHistoryLimit,
 } from "../utils/browseStack";
+import { useAuth } from "./AuthContext";
 
 const BrowseStackContext = createContext(null);
 
 /**
  * Tracks visited app pages in a stack (sessionStorage). Form save/cancel and the
  * global Back button pop to the previous entry instead of a hardcoded list URL.
+ * Visit history is a separate append-only log (includes duplicates and Back).
  */
 export function BrowseStackProvider({ children }) {
   const { user, loading: authLoading } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
   const navigationType = useNavigationType();
+  const userId = user?.id ?? null;
+  const limitStorageKey = userId
+    ? `${BROWSE_HISTORY_LIMIT_KEY}:${userId}`
+    : BROWSE_HISTORY_LIMIT_KEY;
+
+  const [historyLimit, setHistoryLimitState] = useState(() =>
+    readLocalHistoryLimit(limitStorageKey)
+  );
   const [stack, setStack] = useState(() => loadBrowseStack());
+  const [visits, setVisits] = useState(() => loadBrowseVisits(historyLimit));
   const stackRef = useRef(stack);
+  const historyLimitRef = useRef(historyLimit);
   const hadUserRef = useRef(false);
+  const hydratedLimitKeyRef = useRef("");
 
   useEffect(() => {
     stackRef.current = stack;
   }, [stack]);
+
+  useEffect(() => {
+    historyLimitRef.current = historyLimit;
+  }, [historyLimit]);
 
   useEffect(() => {
     if (user) {
@@ -40,13 +64,61 @@ export function BrowseStackProvider({ children }) {
     clearBrowseStackStorage();
     stackRef.current = [];
     setStack([]);
+    setVisits([]);
   }, [user, authLoading]);
+
+  // Hydrate history-limit preference (local first, then server).
+  useEffect(() => {
+    const local = readLocalHistoryLimit(limitStorageKey);
+    setHistoryLimitState(local);
+    setVisits((prev) => saveBrowseVisits(prev.length ? prev : loadBrowseVisits(local), local));
+
+    if (!userId) {
+      hydratedLimitKeyRef.current = limitStorageKey;
+      return undefined;
+    }
+
+    let cancelled = false;
+    hydratedLimitKeyRef.current = "";
+
+    (async () => {
+      try {
+        const preference = await getUserPreference(BROWSE_HISTORY_LIMIT_KEY);
+        if (cancelled) return;
+        const remote = normalizeHistoryLimit(preference?.value?.limit);
+        const hasRemote = preference?.value?.limit != null;
+        const next = hasRemote ? remote : local;
+        setHistoryLimitState(next);
+        writeLocalHistoryLimit(limitStorageKey, next);
+        setVisits((prev) => saveBrowseVisits(prev, next));
+        if (!hasRemote && local !== DEFAULT_HISTORY_LIMIT) {
+          setUserPreference(BROWSE_HISTORY_LIMIT_KEY, { limit: local }).catch(() => {});
+        }
+      } catch {
+        // keep local
+      } finally {
+        if (!cancelled) {
+          hydratedLimitKeyRef.current = limitStorageKey;
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [userId, limitStorageKey]);
 
   useEffect(() => {
     const path = locationToPath(location);
     if (!shouldTrackBrowsePath(path)) return;
 
-    // Our own pop/restore navigations already updated the stack.
+    // Always append every tracked navigation (duplicates, browser back, restore).
+    setVisits((prev) => {
+      const saved = saveBrowseVisits([...prev, path], historyLimitRef.current);
+      return saved;
+    });
+
+    // Our own pop/restore navigations already updated the browse stack.
     if (location.state?.[BROWSE_STACK_NAV_KEY] === "restore") return;
 
     setStack((prev) => {
@@ -71,6 +143,20 @@ export function BrowseStackProvider({ children }) {
       return saved;
     });
   }, [location, navigationType]);
+
+  const setHistoryLimit = useCallback(
+    (value) => {
+      const next = normalizeHistoryLimit(value);
+      setHistoryLimitState(next);
+      historyLimitRef.current = next;
+      writeLocalHistoryLimit(limitStorageKey, next);
+      setVisits((prev) => saveBrowseVisits(prev, next));
+      if (userId) {
+        setUserPreference(BROWSE_HISTORY_LIMIT_KEY, { limit: next }).catch(() => {});
+      }
+    },
+    [limitStorageKey, userId]
+  );
 
   const value = useMemo(() => {
     const previousPath = stack.length >= 2 ? stack[stack.length - 2] : null;
@@ -103,16 +189,20 @@ export function BrowseStackProvider({ children }) {
       clearBrowseStackStorage();
       stackRef.current = [];
       setStack([]);
+      setVisits([]);
     }
 
     return {
       stack,
+      visits,
+      historyLimit,
+      setHistoryLimit,
       previousPath,
       canGoBack,
       goBack,
       clearStack,
     };
-  }, [stack, navigate]);
+  }, [stack, visits, historyLimit, setHistoryLimit, navigate]);
 
   return <BrowseStackContext.Provider value={value}>{children}</BrowseStackContext.Provider>;
 }

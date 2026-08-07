@@ -5,6 +5,7 @@ import { useBranding } from "../context/BrandingContext";
 import { useTheme } from "../context/ThemeContext";
 import { useSidebarPreferences } from "../hooks/useSidebarPreferences";
 import { AppBrandText, BrandMark } from "./AppBrand";
+import IronmanDialNav from "./IronmanDialNav";
 import { LcarsFootBand, LcarsFrameBrand } from "./LcarsShellChrome";
 import Sidebar from "./Sidebar";
 
@@ -17,6 +18,7 @@ function AppShell({ children }) {
   const { fullTitle } = useBranding();
   const { resolvedTheme } = useTheme();
   const isLcars = resolvedTheme === "lcars";
+  const isStudioTwitty = resolvedTheme === "studiotwitty";
   const displayName = user?.display_name || user?.username || "";
 
   const closeMenu = () => setMenuOpen(false);
@@ -39,6 +41,7 @@ function AppShell({ children }) {
     menuOpen ? "shell-menu-open" : "",
     sidebar.isCollapsed ? "shell-sidebar-collapsed" : "shell-sidebar-expanded",
     isLcars ? "shell-lcars" : "",
+    isStudioTwitty ? "shell-studiotwitty" : "",
   ]
     .filter(Boolean)
     .join(" ");
@@ -58,24 +61,26 @@ function AppShell({ children }) {
 
   const mobileBar = (
     <header className="mobile-bar">
-      <button
-        type="button"
-        className="menu-toggle"
-        aria-label="Open navigation menu"
-        onClick={() => setMenuOpen(true)}
-      >
-        <svg
-          width="22"
-          height="22"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
+      {!isStudioTwitty && (
+        <button
+          type="button"
+          className="menu-toggle"
+          aria-label="Open navigation menu"
+          onClick={() => setMenuOpen(true)}
         >
-          <path d="M4 6h16M4 12h16M4 18h16" />
-        </svg>
-      </button>
+          <svg
+            width="22"
+            height="22"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+          >
+            <path d="M4 6h16M4 12h16M4 18h16" />
+          </svg>
+        </button>
+      )}
       <Link to="/" className="brand" title={fullTitle}>
         <BrandMark size={16} />
         <AppBrandText showShip={false} />
@@ -108,6 +113,20 @@ function AppShell({ children }) {
               <LcarsFootBand />
             </div>
           </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (isStudioTwitty) {
+    return (
+      <div className={shellClassName}>
+        <IronmanDialNav onNavigate={handleNavigate} />
+        <div className="shell-body">
+          {mobileBar}
+          <main className="shell-main" key={location.pathname}>
+            <div className="shell-inner">{children}</div>
+          </main>
         </div>
       </div>
     );

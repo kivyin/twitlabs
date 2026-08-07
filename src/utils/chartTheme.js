@@ -14,19 +14,39 @@ export const LCARS_CHART_PALETTE = [
   "#66ff99",
 ];
 
-export function getChartPalette(themeName = "") {
-  if (themeName === "lcars" && typeof window !== "undefined") {
-    const fromCss = [];
-    for (let i = 1; i <= 10; i += 1) {
-      const value = getComputedStyle(document.documentElement)
-        .getPropertyValue(`--chart-${i}`)
-        .trim();
-      if (value) fromCss.push(value);
-    }
-    if (fromCss.length > 0) return fromCss;
-    return LCARS_CHART_PALETTE;
+export const IRONMAN_CHART_PALETTE = [
+  "#29d7ff",
+  "#ff7a1a",
+  "#3dffb0",
+  "#7aefff",
+  "#ffb347",
+  "#4aa8ff",
+  "#ff5a3d",
+  "#a8fff0",
+  "#c8e7ff",
+  "#ff9a2e",
+];
+
+function paletteFromCss(fallback) {
+  if (typeof window === "undefined") return fallback;
+  const fromCss = [];
+  for (let i = 1; i <= 10; i += 1) {
+    const value = getComputedStyle(document.documentElement)
+      .getPropertyValue(`--chart-${i}`)
+      .trim();
+    if (value) fromCss.push(value);
   }
-  return themeName === "lcars" ? LCARS_CHART_PALETTE : DEFAULT_CHART_PALETTE;
+  return fromCss.length > 0 ? fromCss : fallback;
+}
+
+export function getChartPalette(themeName = "") {
+  if (themeName === "lcars") {
+    return paletteFromCss(LCARS_CHART_PALETTE);
+  }
+  if (themeName === "studiotwitty" || themeName === "ironman") {
+    return paletteFromCss(IRONMAN_CHART_PALETTE);
+  }
+  return DEFAULT_CHART_PALETTE;
 }
 
 function cssVar(name, fallback) {
@@ -44,12 +64,14 @@ export function readChartThemeTokens(element) {
       ? document.documentElement.getAttribute("data-theme") || "light"
       : "light";
   const computed = element ? getComputedStyle(element) : null;
-  const text =
-    computed?.color?.trim() ||
-    cssVar("--text", theme === "lcars" ? "#ffd580" : "#888888");
+  const textFallback =
+    theme === "lcars" ? "#ffd580" : theme === "studiotwitty" ? "#e8f7ff" : "#888888";
+  const surfaceFallback =
+    theme === "lcars" ? "#0a0a0c" : theme === "studiotwitty" ? "#071018" : "#ffffff";
+  const text = computed?.color?.trim() || cssVar("--text", textFallback);
   const muted = cssVar("--muted-text", text);
   const border = cssVar("--border", "rgba(128,128,128,0.35)");
-  const surface = cssVar("--surface", theme === "lcars" ? "#0a0a0c" : "#ffffff");
+  const surface = cssVar("--surface", surfaceFallback);
   const surface2 = cssVar("--surface-2", surface);
 
   return {
