@@ -18,6 +18,17 @@ import {
   CALENDAR_SHOPPING_LISTS_TABLE,
   installCalendarApi,
 } from "./vite.calendar-api.js";
+import {
+  HOME_INVENTORY_ITEMS_TABLE,
+  HOME_INVENTORY_LOCATIONS_TABLE,
+  installHomeInventoryApi,
+} from "./vite.home-inventory-api.js";
+import {
+  TROUBLEHUB_MATCH_ANSWERS_TABLE,
+  TROUBLEHUB_MATCH_CARDS_TABLE,
+  TROUBLEHUB_NOTIFICATIONS_TABLE,
+  installTroublehubApi,
+} from "./vite.troublehub-api.js";
 import { callGeminiJson, GEMINI_DEFAULT_MODEL } from "./vite.gemini.js";
 
 // Load .env before resolving data paths (SQLITE_DB_PATH, SQLITE_DATA_DIR, GEMINI_API_KEY, …).
@@ -274,6 +285,7 @@ const NOTES_TABLE = "notes";
 const DECISION_LISTS_TABLE = "decision_lists";
 const DECISION_ITEMS_TABLE = "decision_items";
 const TRAINING_EXERCISES_TABLE = "training_exercises";
+const TRAINING_PROGRAMS_TABLE = "training_programs";
 const TRAINING_ROUTINES_TABLE = "training_routines";
 const TRAINING_ROUTINE_EXERCISES_TABLE = "training_routine_exercises";
 const TRAINING_WORKOUTS_TABLE = "training_workouts";
@@ -300,7 +312,12 @@ const APP_USER_ROLES = {
   "site-tracker": "site_tracker_user",
   training: "training_user",
   calendar: "calendar_user",
+  home_inventory: "home_inventory_user",
+  troublehub: "troublehub_user",
 };
+
+/** Apps system admins do NOT auto-receive — require an explicit role (or session elevation). */
+const ADMIN_EXPLICIT_APPS = new Set(["troublehub"]);
 
 /** Extra assignable roles beyond the default APP_USER_ROLES entry (one role per app per user). */
 const APP_EXTRA_ROLES = {
@@ -345,6 +362,7 @@ const HIDDEN_NAV_TABLES = new Set([
   DECISION_LISTS_TABLE,
   DECISION_ITEMS_TABLE,
   TRAINING_EXERCISES_TABLE,
+  TRAINING_PROGRAMS_TABLE,
   TRAINING_ROUTINES_TABLE,
   TRAINING_ROUTINE_EXERCISES_TABLE,
   TRAINING_WORKOUTS_TABLE,
@@ -354,6 +372,11 @@ const HIDDEN_NAV_TABLES = new Set([
   CALENDAR_EVENTS_TABLE,
   CALENDAR_SHOPPING_LISTS_TABLE,
   CALENDAR_SHOPPING_ITEMS_TABLE,
+  HOME_INVENTORY_LOCATIONS_TABLE,
+  HOME_INVENTORY_ITEMS_TABLE,
+  TROUBLEHUB_MATCH_CARDS_TABLE,
+  TROUBLEHUB_MATCH_ANSWERS_TABLE,
+  TROUBLEHUB_NOTIFICATIONS_TABLE,
 ]);
 
 const DEFAULT_ADMIN_NAV_ITEMS = [
@@ -361,6 +384,7 @@ const DEFAULT_ADMIN_NAV_ITEMS = [
   { label: "Tables", path: "/admin/tables", icon: "tables", sort_order: 20 },
   { label: "Fields", path: "/admin/fields", icon: "fields", sort_order: 30 },
   { label: "Users", path: "/admin/users", icon: "users", sort_order: 40 },
+  { label: "TroubleHub Vault", path: "/admin/troublehub", icon: "troublehub", sort_order: 45 },
   { label: "Deleted Records", path: "/admin/deletes", icon: "deletes", sort_order: 50 },
   { label: "Error Logs", path: "/admin/logs", icon: "logs", sort_order: 55 },
   { label: "Navigation", path: "/admin/navigation", icon: "navigation", sort_order: 60 },
@@ -628,8 +652,42 @@ const createSession = (user, { mustChangePassword = false } = {}) => {
     lastSeenAt: Date.now(),
     mustChangePassword: Boolean(mustChangePassword),
     ideElevatedUntil: null,
+    // TroubleHub Admin elevation always starts cleared — must re-elevate each login.
+    troublehubAdminElevated: false,
   });
   return token;
+};
+
+/** Active in-memory sessions (not idle-expired), one row per user. */
+const getOnlineUsers = () => {
+  const now = Date.now();
+  const byUser = new Map();
+  for (const [token, session] of sessions.entries()) {
+    if (now - session.lastSeenAt > SESSION_IDLE_MS) {
+      sessions.delete(token);
+      continue;
+    }
+    const id = session.user?.id;
+    if (id == null) continue;
+    const prev = byUser.get(id);
+    if (!prev || session.lastSeenAt > prev.last_seen_at) {
+      byUser.set(id, {
+        id,
+        username: session.user.username,
+        display_name: session.user.display_name ?? null,
+        last_seen_at: session.lastSeenAt,
+        last_seen_on: new Date(session.lastSeenAt)
+          .toISOString()
+          .slice(0, 19)
+          .replace("T", " "),
+      });
+    }
+  }
+  return [...byUser.values()].sort((a, b) =>
+    String(a.username || "").localeCompare(String(b.username || ""), undefined, {
+      sensitivity: "base",
+    })
+  );
 };
 
 const getIdeElevatedUntil = (sessionLike) => {
@@ -918,6 +976,24 @@ const ensureApplications = () => {
     INSERT OR IGNORE INTO ${APPLICATIONS_TABLE} (name, title, description)
     VALUES ('calendar', 'Calendar', 'Schedule events and work time frames on a shared calendar.')
   `);
+
+  run(`
+    INSERT OR IGNORE INTO ${APPLICATIONS_TABLE} (name, title, description)
+    VALUES (
+      'home_inventory',
+      'Home Inventory',
+      'Track food and household items by freezer and fridge location.'
+    )
+  `);
+
+  run(`
+    INSERT OR IGNORE INTO ${APPLICATIONS_TABLE} (name, title, description)
+    VALUES (
+      'troublehub',
+      'TroubleHub',
+      'Explicit vault of private games. Access is never granted to system admins by default.'
+    )
+  `);
 };
 
 const ensureUsers = () => {
@@ -934,7 +1010,8 @@ const ensureUsers = () => {
       username TEXT NOT NULL UNIQUE,
       password TEXT NOT NULL,
       display_name TEXT,
-      role TEXT NOT NULL DEFAULT 'user'
+      role TEXT NOT NULL DEFAULT 'user',
+      last_login TEXT
     )
   `);
 
@@ -944,6 +1021,9 @@ const ensureUsers = () => {
   }
   if (!hasColumn(USERS_TABLE, "role")) {
     run(`ALTER TABLE ${USERS_TABLE} ADD COLUMN role TEXT NOT NULL DEFAULT 'user'`);
+  }
+  if (!hasColumn(USERS_TABLE, "last_login")) {
+    run(`ALTER TABLE ${USERS_TABLE} ADD COLUMN last_login TEXT`);
   }
 
   const userCount = all(`SELECT COUNT(*) AS count FROM ${USERS_TABLE}`)[0].count;
@@ -2640,7 +2720,11 @@ const seedNavigation = (userId = null) => {
                 ? "training"
                 : application.name === "calendar"
                   ? "calendar"
-                  : "app",
+                  : application.name === "home_inventory"
+                    ? "home_inventory"
+                    : application.name === "troublehub"
+                      ? "troublehub"
+                      : "app",
         is_main: 1,
         parent_id: null,
         application: application.name,
@@ -2767,6 +2851,61 @@ const seedNavigation = (userId = null) => {
       }
     }
 
+    if (application.name === "troublehub") {
+      upsertNavigationItem(
+        {
+          label: "Match Mischief",
+          path: `/app/troublehub/match`,
+          icon: "sparkles",
+          is_main: 0,
+          parent_id: appMainId,
+          application: application.name,
+          nav_section: "apps",
+          sort_order: (appIndex + 1) * 100 + 1,
+        },
+        userId
+      );
+      upsertNavigationItem(
+        {
+          label: "Try a card",
+          path: `/app/troublehub/match/play`,
+          icon: "decisions",
+          is_main: 0,
+          parent_id: appMainId,
+          application: application.name,
+          nav_section: "apps",
+          sort_order: (appIndex + 1) * 100 + 2,
+        },
+        userId
+      );
+      upsertNavigationItem(
+        {
+          label: "Compare",
+          path: `/app/troublehub/match/compare`,
+          icon: "reports",
+          is_main: 0,
+          parent_id: appMainId,
+          application: application.name,
+          nav_section: "apps",
+          sort_order: (appIndex + 1) * 100 + 3,
+        },
+        userId
+      );
+      upsertNavigationItem(
+        {
+          label: "Fantasies",
+          path: `/app/troublehub/fantasies`,
+          icon: "sparkles",
+          is_main: 0,
+          parent_id: appMainId,
+          application: application.name,
+          nav_section: "apps",
+          sort_order: (appIndex + 1) * 100 + 4,
+        },
+        userId
+      );
+    }
+
     for (const [tableIndex, collection] of collections.entries()) {
       if (
         application.name === "tasks" ||
@@ -2774,7 +2913,9 @@ const seedNavigation = (userId = null) => {
         application.name === "decisions" ||
         application.name === "site-tracker" ||
         application.name === "training" ||
-        application.name === "calendar"
+        application.name === "calendar" ||
+        application.name === "home_inventory" ||
+        application.name === "troublehub"
       ) {
         continue;
       }
@@ -3605,20 +3746,29 @@ const userCanAccessApp = (user, appName) => {
   if (!user || !appName) {
     return false;
   }
-  if (isSessionAdmin(user)) {
-    return true;
-  }
   const allowed = getAllowedAppRoles(appName);
-  if (allowed.length === 0) {
-    return false;
-  }
-  return (
-    user.roles?.some(
+  const hasExplicitRole =
+    allowed.length > 0 &&
+    (user.roles?.some(
       (role) =>
         role.application === appName &&
         (allowed.includes(role.role) || role.role === "member")
-    ) ?? false
-  );
+    ) ??
+      false);
+
+  // Vault apps: never open via system-admin bypass. Explicit role or session elevation only.
+  if (ADMIN_EXPLICIT_APPS.has(appName)) {
+    if (hasExplicitRole) return true;
+    return Boolean(isSessionAdmin(user) && user.troublehub_admin_elevated);
+  }
+
+  if (isSessionAdmin(user)) {
+    return true;
+  }
+  if (allowed.length === 0) {
+    return false;
+  }
+  return hasExplicitRole;
 };
 
 const userCanEditCalendar = (user) => {
@@ -3649,6 +3799,10 @@ const assertUserCanAccessTable = (user, tableName, { forWrite = false } = {}) =>
     throw new Error("Unauthorized.");
   }
   if (isSessionAdmin(user)) {
+    const application = getTableApplication(tableName);
+    if (application && ADMIN_EXPLICIT_APPS.has(application) && !userCanAccessApp(user, application)) {
+      throw new Error(`You do not have access to the ${application} app.`);
+    }
     return;
   }
 
@@ -4050,7 +4204,11 @@ const getTokenFromHeader = (req) => {
 
 const getSessionUser = (req) => {
   const session = getSessionRecord(req);
-  return session?.user ?? null;
+  if (!session?.user) return null;
+  return {
+    ...session.user,
+    troublehub_admin_elevated: Boolean(session.troublehubAdminElevated),
+  };
 };
 
 const requireAuthUser = (req, res) => {
@@ -4247,12 +4405,14 @@ const { ensureTrainingSchema, handleTrainingApi } = installTrainingApi({
   USERS_TABLE,
   USER_PREFERENCES_TABLE,
   TRAINING_EXERCISES_TABLE,
+  TRAINING_PROGRAMS_TABLE,
   TRAINING_ROUTINES_TABLE,
   TRAINING_ROUTINE_EXERCISES_TABLE,
   TRAINING_WORKOUTS_TABLE,
   TRAINING_WORKOUT_EXERCISES_TABLE,
   TRAINING_WORKOUT_SETS_TABLE,
   TRAINING_MEASUREMENTS_TABLE,
+  CALENDAR_EVENTS_TABLE,
 });
 runSchemaStep("training", ensureTrainingSchema);
 
@@ -4271,6 +4431,46 @@ const { ensureCalendarSchema, handleCalendarApi } = installCalendarApi({
   USERS_TABLE,
 });
 runSchemaStep("calendar", ensureCalendarSchema);
+
+const { ensureHomeInventorySchema, handleHomeInventoryApi, HOME_INVENTORY_IMAGES_DIR } =
+  installHomeInventoryApi({
+    run,
+    all,
+    insertAuditedRow,
+    updateAuditedRow,
+    archiveAndDeleteRowsInternal,
+    userCanAccessApp,
+    json,
+    readBody,
+    sendApiError,
+    DATA_ROOT,
+    CALENDAR_EVENTS_TABLE,
+  });
+runSchemaStep("home_inventory", ensureHomeInventorySchema);
+
+const { ensureTroublehubSchema, handleTroublehubApi, TROUBLEHUB_IMAGES_DIR } =
+  installTroublehubApi({
+    run,
+    all,
+    insertAuditedRow,
+    updateAuditedRow,
+    archiveAndDeleteRowsInternal,
+    isSessionAdmin,
+    userCanAccessApp,
+    getUserRoles,
+    setUserRoles,
+    json,
+    readBody,
+    sendApiError,
+    DATA_ROOT,
+    USERS_TABLE,
+    USER_ROLES_TABLE,
+    getSessionRecord,
+    sessions,
+    verifyPassword,
+    writeSystemLog,
+  });
+runSchemaStep("troublehub", ensureTroublehubSchema);
 
 if (SCHEMA_LOG_VERBOSE) {
   try {
@@ -4368,6 +4568,7 @@ const performZeroBoot = (actingUser, { confirm } = {}) => {
   // File wipe outside the DB transaction (best-effort; DB wipe is authoritative).
   const removedAttachmentDirs = wipeDirectoryContents(ATTACHMENTS_DIR);
   const removedAccountImages = wipeDirectoryContents(ACCOUNT_IMAGES_DIR);
+  const removedHomeInventoryImages = wipeDirectoryContents(HOME_INVENTORY_IMAGES_DIR);
 
   runInTransaction(() => {
     // Budget / finance dependents first.
@@ -4410,12 +4611,22 @@ const performZeroBoot = (actingUser, { confirm } = {}) => {
     deleteAll(DECISION_ITEMS_TABLE);
     deleteAll(DECISION_LISTS_TABLE);
 
+    // Home Inventory
+    deleteAll(HOME_INVENTORY_ITEMS_TABLE);
+    deleteAll(HOME_INVENTORY_LOCATIONS_TABLE);
+
+    // TroubleHub
+    deleteAll(TROUBLEHUB_MATCH_ANSWERS_TABLE);
+    deleteAll(TROUBLEHUB_NOTIFICATIONS_TABLE);
+    deleteAll(TROUBLEHUB_MATCH_CARDS_TABLE);
+
     // Training
     deleteAll(TRAINING_WORKOUT_SETS_TABLE);
     deleteAll(TRAINING_WORKOUT_EXERCISES_TABLE);
     deleteAll(TRAINING_WORKOUTS_TABLE);
     deleteAll(TRAINING_ROUTINE_EXERCISES_TABLE);
     deleteAll(TRAINING_ROUTINES_TABLE);
+    deleteAll(TRAINING_PROGRAMS_TABLE);
     deleteAll(TRAINING_MEASUREMENTS_TABLE);
     deleteAll(TRAINING_EXERCISES_TABLE);
 
@@ -4477,11 +4688,17 @@ const performZeroBoot = (actingUser, { confirm } = {}) => {
       NOTEBOOKS_TABLE,
       DECISION_ITEMS_TABLE,
       DECISION_LISTS_TABLE,
+      HOME_INVENTORY_ITEMS_TABLE,
+      HOME_INVENTORY_LOCATIONS_TABLE,
+      TROUBLEHUB_MATCH_ANSWERS_TABLE,
+      TROUBLEHUB_NOTIFICATIONS_TABLE,
+      TROUBLEHUB_MATCH_CARDS_TABLE,
       TRAINING_WORKOUT_SETS_TABLE,
       TRAINING_WORKOUT_EXERCISES_TABLE,
       TRAINING_WORKOUTS_TABLE,
       TRAINING_ROUTINE_EXERCISES_TABLE,
       TRAINING_ROUTINES_TABLE,
+      TRAINING_PROGRAMS_TABLE,
       TRAINING_MEASUREMENTS_TABLE,
       TRAINING_EXERCISES_TABLE,
       CALENDAR_SHOPPING_ITEMS_TABLE,
@@ -4510,6 +4727,7 @@ const performZeroBoot = (actingUser, { confirm } = {}) => {
   ensureDecisionsDictionaryLabels();
   ensureTrainingSchema();
   ensureCalendarSchema();
+  ensureHomeInventorySchema();
   ensureAuditDictionaryLabels();
   ensureAccountDictionaryLabels();
   ensureTransactionDictionaryLabels();
@@ -4535,6 +4753,7 @@ const performZeroBoot = (actingUser, { confirm } = {}) => {
     cleared_tables: clearedTables,
     removed_attachment_dirs: removedAttachmentDirs,
     removed_account_images: removedAccountImages,
+    removed_home_inventory_images: removedHomeInventoryImages,
   };
 };
 
@@ -9236,15 +9455,18 @@ export function sqliteApiPlugin() {
 
             clearLoginFailures(req);
 
+            const loginAt = auditTimestamp();
             // Upgrade legacy SHA-256 hashes to scrypt on successful login.
             if (!String(user.password).startsWith("scrypt$")) {
               updateAuditedRow(
                 USERS_TABLE,
-                { password: hashPassword(password) },
+                { password: hashPassword(password), last_login: loginAt },
                 "id = ?",
                 [user.id],
                 user.id
               );
+            } else {
+              run(`UPDATE ${USERS_TABLE} SET last_login = ? WHERE id = ?`, [loginAt, user.id]);
             }
 
             const roles = getUserRoles(user.id);
@@ -9259,7 +9481,11 @@ export function sqliteApiPlugin() {
             const token = createSession(sessionUser, { mustChangePassword });
             json(res, 200, {
               token,
-              user: { ...sessionUser, must_change_password: mustChangePassword },
+              user: {
+                ...sessionUser,
+                must_change_password: mustChangePassword,
+                troublehub_admin_elevated: false,
+              },
               session_idle_seconds: SESSION_IDLE_SECONDS,
               is_local_network: isLocalNetworkClient(req),
             });
@@ -9300,6 +9526,7 @@ export function sqliteApiPlugin() {
                 ...session.user,
                 must_change_password: Boolean(session.mustChangePassword),
                 ide_elevated_until: getIdeElevatedUntil(stored),
+                troublehub_admin_elevated: Boolean(stored?.troublehubAdminElevated),
               },
               session_idle_seconds: SESSION_IDLE_SECONDS,
               is_local_network: isLocalNetworkClient(req),
@@ -9359,9 +9586,11 @@ export function sqliteApiPlugin() {
           if (req.method === "GET" && requestPath === "/api/auth/users") {
             const actingUser = requireAdmin(req, res);
             if (!actingUser) return;
-            const rows = all(`SELECT id, username, display_name FROM ${USERS_TABLE} ORDER BY id`);
+            const rows = all(
+              `SELECT id, username, display_name, last_login FROM ${USERS_TABLE} ORDER BY id`
+            );
             const users = rows.map((u) => ({ ...u, roles: getUserRoles(u.id) }));
-            json(res, 200, { users });
+            json(res, 200, { users, online_users: getOnlineUsers() });
             return;
           }
 
@@ -11209,6 +11438,16 @@ export function sqliteApiPlugin() {
 
           // ── Calendar endpoints ──────────────────────────────────────────
           if (await handleCalendarApi(req, res, getSessionUser)) {
+            return;
+          }
+
+          // ── Home Inventory endpoints ────────────────────────────────────
+          if (await handleHomeInventoryApi(req, res, getSessionUser)) {
+            return;
+          }
+
+          // ── TroubleHub endpoints ────────────────────────────────────────
+          if (await handleTroublehubApi(req, res, getSessionUser)) {
             return;
           }
 

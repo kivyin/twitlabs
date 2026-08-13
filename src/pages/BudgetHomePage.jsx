@@ -58,25 +58,29 @@ function CardArrow() {
 function BudgetHomePage() {
   const { appName = "budget" } = useParams();
   const [tables, setTables] = useState([]);
-  const [appTitle, setAppTitle] = useState("Application");
+  const [appTitle, setAppTitle] = useState(appName === "budget" ? "Budget" : "Application");
   const [error, setError] = useState("");
   const showDashboard = hasDashboard(appName);
+  // Budget home is dashboard-only; data tables live under Administration → Tables.
+  const showDataTables = appName !== "budget";
 
   useEffect(() => {
-    async function loadTables() {
+    async function loadMeta() {
       try {
         const list = await getCollectionDefinitions(appName);
         setTables(list);
-        setAppTitle(list[0]?.application_title || appName);
+        setAppTitle(list[0]?.application_title || (appName === "budget" ? "Budget" : appName));
       } catch (loadError) {
         setError(loadError.message);
       }
     }
 
-    loadTables();
+    loadMeta();
   }, [appName]);
 
-  const visibleTables = tables.filter((table) => !INTERNAL_TABLES.has(table.name));
+  const visibleTables = showDataTables
+    ? tables.filter((table) => !INTERNAL_TABLES.has(table.name))
+    : [];
 
   return (
     <>
@@ -84,48 +88,50 @@ function BudgetHomePage() {
         breadcrumbs={[{ label: "Home", to: "/" }, { label: appTitle }]}
         title={appTitle}
         subtitle={
-          showDashboard
-            ? "Your dashboard and data tables in one place."
-            : "Select a table to view and manage its records."
+          appName === "budget"
+            ? "Your dashboard of balances, bills, goals, and cash flow."
+            : showDashboard
+              ? "Your dashboard and data tables in one place."
+              : "Select a table to view and manage its records."
         }
       />
       {error && <p className="error">{error}</p>}
 
       {showDashboard && <Dashboard application={appName} />}
 
-      {visibleTables.length === 0 && !error ? (
+      {showDataTables && visibleTables.length === 0 && !error ? (
         <section className="panel empty-state">
           <p className="subtext">No tables are available for this application yet.</p>
         </section>
-      ) : (
-        visibleTables.length > 0 && (
-          <section className={showDashboard ? "dashboard-tables-section" : undefined}>
-            {showDashboard && (
-              <div className="dashboard-section-head">
-                <h2>Data tables</h2>
-                <p className="subtext">Browse and manage underlying records.</p>
-              </div>
-            )}
-            <div className="grid">
-              {visibleTables.map((table) => (
-                <Link
-                  key={table.name}
-                  className="card"
-                  to={`/app/${appName}/${table.name}`}
-                  title={table.name}
-                >
-                  <CardArrow />
-                  <span className="card-icon" aria-hidden="true">
-                    <TableIcon />
-                  </span>
-                  <h2>{table.label}</h2>
-                  <p>Open {table.label} records</p>
-                </Link>
-              ))}
+      ) : null}
+
+      {showDataTables && visibleTables.length > 0 ? (
+        <section className={showDashboard ? "dashboard-tables-section" : undefined}>
+          {showDashboard && (
+            <div className="dashboard-section-head">
+              <h2>Data tables</h2>
+              <p className="subtext">Browse and manage underlying records.</p>
             </div>
-          </section>
-        )
-      )}
+          )}
+          <div className="grid">
+            {visibleTables.map((table) => (
+              <Link
+                key={table.name}
+                className="card"
+                to={`/app/${appName}/${table.name}`}
+                title={table.name}
+              >
+                <CardArrow />
+                <span className="card-icon" aria-hidden="true">
+                  <TableIcon />
+                </span>
+                <h2>{table.label}</h2>
+                <p>Open {table.label} records</p>
+              </Link>
+            ))}
+          </div>
+        </section>
+      ) : null}
     </>
   );
 }

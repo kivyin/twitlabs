@@ -17,11 +17,19 @@ import { isCardioExercise } from "../../utils/trainingUtils";
 
 const emptyGoals = () => ["", "", ""];
 
+function localToday() {
+  const now = new Date();
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+}
+
 function TrainingCoachPage() {
   const appName = "training";
   const navigate = useNavigate();
   const { athleteUserId } = useTrainingAthlete();
   const [goals, setGoals] = useState(emptyGoals);
+  const [daysPerWeek, setDaysPerWeek] = useState(4);
+  const [weekCount, setWeekCount] = useState(6);
   const [error, setError] = useState("");
   const [status, setStatus] = useState("");
   const [loadingGoals, setLoadingGoals] = useState(true);
@@ -30,6 +38,7 @@ function TrainingCoachPage() {
   const [generatingHiit, setGeneratingHiit] = useState(false);
   const [startingHiit, setStartingHiit] = useState(false);
   const [lastPlan, setLastPlan] = useState(null);
+  const [lastProgramId, setLastProgramId] = useState(null);
   const [hiitPreview, setHiitPreview] = useState(null);
   const [startingRoutineId, setStartingRoutineId] = useState(null);
 
@@ -88,12 +97,23 @@ function TrainingCoachPage() {
     setError("");
     setStatus("");
     try {
-      const result = await generateTrainingAiRoutine(goals, athleteUserId);
+      const result = await generateTrainingAiRoutine(goals, athleteUserId, {
+        daysPerWeek,
+        weekCount,
+        startDate: localToday(),
+      });
       setLastPlan(result.plan);
+      setLastProgramId(result.program?.id || result.plan?.id || null);
+      const events = result.plan?.calendar_events_created ?? 0;
       setStatus(
-        result.skipped?.length
-          ? `Plan created (${result.plan?.training_day_count || 0} training days). Skipped: ${result.skipped.join(", ")}`
-          : `Plan created: ${result.plan?.week_count || 0} weeks · ${result.plan?.training_day_count || 0} training days.`
+        [
+          `Program “${result.plan?.name || "Coach plan"}” created from ${result.plan?.start_date}.`,
+          `${result.plan?.week_count || 0} weeks · ${result.plan?.training_day_count || 0} training days.`,
+          events ? `${events} calendar events scheduled.` : "",
+          result.skipped?.length ? `Skipped: ${result.skipped.join(", ")}` : "",
+        ]
+          .filter(Boolean)
+          .join(" ")
       );
     } catch (genError) {
       setError(genError.message);
@@ -157,8 +177,8 @@ function TrainingCoachPage() {
           { label: "Training", to: `/app/${appName}` },
           { label: "AI Coach" },
         ]}
-        title="AI Coach"
-        subtitle="Set three goals, generate a 5–6 week day-by-day plan, or fire a daily HIIT."
+        title="AI Exercise Coach"
+        subtitle="Goal-driven programming with dated sessions, progressions, and calendar scheduling."
         footer={<TrainingAthleteSwitcher />}
       />
 
@@ -167,9 +187,9 @@ function TrainingCoachPage() {
       {loadingGoals && <p className="subtext">Loading goals…</p>}
 
       <section className="panel">
-        <h2>Your three goals</h2>
+        <h2>Your goals</h2>
         <p className="subtext">
-          Example: build a stronger bench, lose fat, train consistently 4 days a week.
+          Tell the coach what you want. Example: stronger bench, lose fat, train 4 days a week starting now.
         </p>
         <div className="form form-shell">
           <div className="form-grid">
@@ -184,7 +204,39 @@ function TrainingCoachPage() {
                 />
               </label>
             ))}
+            <label>
+              Days / week
+              <select
+                value={daysPerWeek}
+                onChange={(event) => setDaysPerWeek(Number(event.target.value))}
+                disabled={generatingRoutine}
+              >
+                {[2, 3, 4, 5, 6].map((n) => (
+                  <option key={n} value={n}>
+                    {n} days
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Block length
+              <select
+                value={weekCount}
+                onChange={(event) => setWeekCount(Number(event.target.value))}
+                disabled={generatingRoutine}
+              >
+                {[4, 5, 6, 8].map((n) => (
+                  <option key={n} value={n}>
+                    {n} weeks
+                  </option>
+                ))}
+              </select>
+            </label>
           </div>
+          <p className="subtext">
+            Schedule starts <strong>today ({localToday()})</strong>. Training days fill the start of each week
+            window; rest days fill the remainder. Sessions are added to Calendar.
+          </p>
           <div className="training-actions-row">
             <button
               type="button"
@@ -200,12 +252,12 @@ function TrainingCoachPage() {
               disabled={!goalsReady || generatingRoutine || loadingGoals}
               onClick={handleGenerateRoutine}
             >
-              {generatingRoutine ? "Building plan…" : "Generate 5–6 week plan"}
+              {generatingRoutine ? "Coaching your plan…" : "Generate coached program"}
             </button>
           </div>
           {generatingRoutine && (
             <p className="subtext">
-              This can take a minute — AI is writing every training day across the block.
+              Building a progressive, dated program and writing calendar events — this can take a minute.
             </p>
           )}
         </div>
@@ -213,14 +265,22 @@ function TrainingCoachPage() {
 
       {lastPlan && (
         <section className="panel">
-          <h2>Latest AI plan</h2>
+          <h2>Latest coached program</h2>
           <p>
             <strong>{lastPlan.name}</strong>
           </p>
           <p className="subtext">
-            {lastPlan.week_count} weeks · {lastPlan.training_day_count} training days saved as
-            routines
+            Starts {lastPlan.start_date} · {lastPlan.days_per_week} days/week · {lastPlan.week_count} weeks ·{" "}
+            {lastPlan.training_day_count} training days
+            {lastPlan.calendar_events_created
+              ? ` · ${lastPlan.calendar_events_created} calendar events`
+              : ""}
           </p>
+          {lastPlan.progression_summary && (
+            <p className="training-progression-callout">
+              <strong>Progression:</strong> {lastPlan.progression_summary}
+            </p>
+          )}
           {lastPlan.notes && <p className="subtext">{lastPlan.notes}</p>}
 
           <div className="training-plan-weeks">
@@ -230,30 +290,36 @@ function TrainingCoachPage() {
                   Week {week.week}
                   {week.focus ? ` — ${week.focus}` : ""}
                 </h3>
+                {week.progression && <p className="subtext">{week.progression}</p>}
                 <ul className="training-list">
                   {(week.days ?? []).map((day, dayIndex) => (
                     <li
-                      key={`${week.week}-${day.day_label}-${dayIndex}`}
+                      key={`${week.week}-${day.scheduled_on || day.day_label}-${dayIndex}`}
                       className="training-list-row"
                     >
                       <div>
                         <strong>
-                          {day.day_label}
+                          {day.scheduled_on || day.day_label}
                           {day.session_name ? ` · ${day.session_name}` : ""}
                         </strong>
                         <span className="stat-meta">
                           {day.is_rest
                             ? "Rest / recovery"
                             : `${day.exercise_count} exercises`}
+                          {day.progression_notes ? ` · ${day.progression_notes}` : ""}
                         </span>
                       </div>
                       {!day.is_rest && day.routine_id ? (
                         <div className="training-row-actions">
                           <Link
                             className="button"
-                            to={`/app/${appName}/routines/${day.routine_id}`}
+                            to={
+                              lastProgramId
+                                ? `/app/${appName}/programs/${lastProgramId}`
+                                : `/app/${appName}/routines/${day.routine_id}`
+                            }
                           >
-                            Edit
+                            View
                           </Link>
                           <button
                             type="button"
@@ -273,8 +339,13 @@ function TrainingCoachPage() {
           </div>
 
           <div className="training-actions-row">
+            {lastProgramId ? (
+              <Link className="button-primary" to={`/app/${appName}/programs/${lastProgramId}`}>
+                Open program
+              </Link>
+            ) : null}
             <Link className="button" to={`/app/${appName}/routines`}>
-              Open routines list
+              Open routines / programs
             </Link>
             <button
               type="button"

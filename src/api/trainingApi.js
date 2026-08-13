@@ -50,8 +50,39 @@ export function getExercisePreviousSets(exerciseId, athleteUserId) {
   );
 }
 
-export function listTrainingRoutines(athleteUserId) {
-  return apiRequest(withAthlete("/api/training/routines", athleteUserId));
+export function listTrainingPrograms(athleteUserId) {
+  return apiRequest(withAthlete("/api/training/programs", athleteUserId));
+}
+
+export function getTrainingProgram(programId, athleteUserId) {
+  return apiRequest(withAthlete(`/api/training/programs/${programId}`, athleteUserId));
+}
+
+export function updateTrainingProgram(programId, data, athleteUserId) {
+  return apiRequest(`/api/training/programs/${programId}`, {
+    method: "PUT",
+    body: JSON.stringify(withAthleteBody(data, athleteUserId)),
+  });
+}
+
+export function deleteTrainingProgram(programId, athleteUserId) {
+  return apiRequest(withAthlete(`/api/training/programs/${programId}`, athleteUserId), {
+    method: "DELETE",
+  });
+}
+
+export function getTrainingToday(athleteUserId, date) {
+  const base = date
+    ? `/api/training/today?date=${encodeURIComponent(date)}`
+    : "/api/training/today";
+  return apiRequest(withAthlete(base, athleteUserId));
+}
+
+export function listTrainingRoutines(athleteUserId, { programId } = {}) {
+  const base = programId
+    ? `/api/training/routines?program_id=${encodeURIComponent(programId)}`
+    : "/api/training/routines";
+  return apiRequest(withAthlete(base, athleteUserId));
 }
 
 export function getTrainingRoutine(routineId, athleteUserId) {
@@ -68,6 +99,14 @@ export function createTrainingRoutine(data, athleteUserId) {
 export function updateTrainingRoutine(routineId, data, athleteUserId) {
   return apiRequest(`/api/training/routines/${routineId}`, {
     method: "PUT",
+    body: JSON.stringify(withAthleteBody(data, athleteUserId)),
+  });
+}
+
+/** Move a program day; later days shift by the same delta (default). */
+export function rescheduleTrainingRoutine(routineId, data, athleteUserId) {
+  return apiRequest(`/api/training/routines/${routineId}/reschedule`, {
+    method: "POST",
     body: JSON.stringify(withAthleteBody(data, athleteUserId)),
   });
 }
@@ -205,10 +244,20 @@ export function saveTrainingAiGoals(goals, athleteUserId) {
   });
 }
 
-export function generateTrainingAiRoutine(goals, athleteUserId) {
+export function generateTrainingAiRoutine(goals, athleteUserId, options = {}) {
   return apiRequest("/api/training/ai/routine", {
     method: "POST",
-    body: JSON.stringify(withAthleteBody({ goals }, athleteUserId)),
+    body: JSON.stringify(
+      withAthleteBody(
+        {
+          goals,
+          days_per_week: options.daysPerWeek,
+          week_count: options.weekCount,
+          start_date: options.startDate,
+        },
+        athleteUserId
+      )
+    ),
   });
 }
 

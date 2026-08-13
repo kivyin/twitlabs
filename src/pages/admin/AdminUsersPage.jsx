@@ -4,6 +4,7 @@ import { apiRequest } from "../../api/http";
 import ConfirmModal from "../../components/common/ConfirmModal";
 import DataTable from "../../components/DataTable";
 import {
+  ADMIN_EXPLICIT_APPS,
   formatRolesSummary,
   formToRoles,
   getAppRoleLabel,
@@ -22,6 +23,20 @@ const EMPTY_FORM = {
 
 const EMPTY_ROLES = { isSystemAdmin: false, apps: {} };
 
+function formatDateTime(value) {
+  if (!value) return "—";
+  const raw = String(value).trim();
+  const parsed = new Date(raw.includes("T") ? raw : raw.replace(" ", "T") + "Z");
+  if (Number.isNaN(parsed.getTime())) return raw;
+  return parsed.toLocaleString(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
 async function api(method, path, body) {
   return apiRequest(path, {
     method,
@@ -31,6 +46,7 @@ async function api(method, path, body) {
 
 function AdminUsersPage() {
   const [users, setUsers] = useState([]);
+  const [onlineUsers, setOnlineUsers] = useState([]);
   const [applications, setApplications] = useState([]);
   const [form, setForm] = useState(EMPTY_FORM);
   const [roleForm, setRoleForm] = useState(EMPTY_ROLES);
@@ -41,25 +57,38 @@ function AdminUsersPage() {
   const [validationErrors, setValidationErrors] = useState({});
   const [deleteTarget, setDeleteTarget] = useState(null);
 
-  const loadData = async () => {
-    setLoading(true);
-    setError("");
+  const loadData = async ({ quiet = false } = {}) => {
+    if (!quiet) setLoading(true);
+    if (!quiet) setError("");
     try {
+      if (quiet) {
+        const usersPayload = await api("GET", "/api/auth/users");
+        setUsers(usersPayload.users ?? []);
+        setOnlineUsers(usersPayload.online_users ?? []);
+        return;
+      }
+
       const [usersPayload, appsData] = await Promise.all([
         api("GET", "/api/auth/users"),
         getApplications(),
       ]);
       setUsers(usersPayload.users ?? []);
-      setApplications(appsData);
+      setOnlineUsers(usersPayload.online_users ?? []);
+      // TroubleHub access is granted only via Administration → TroubleHub Vault.
+      setApplications((appsData || []).filter((app) => !ADMIN_EXPLICIT_APPS.has(app.name)));
     } catch (e) {
-      setError(e.message);
+      if (!quiet) setError(e.message);
     } finally {
-      setLoading(false);
+      if (!quiet) setLoading(false);
     }
   };
 
   useEffect(() => {
     loadData();
+    const timer = window.setInterval(() => {
+      loadData({ quiet: true });
+    }, 15000);
+    return () => window.clearInterval(timer);
   }, []);
 
   const resetForm = () => {
@@ -227,7 +256,7 @@ function AdminUsersPage() {
             />
             <span style={{ fontWeight: 600 }}>System Admin</span>
             <span style={{ color: "var(--muted-text)", fontSize: "0.85rem" }}>
-              — full access to all apps and the admin panel
+              — admin panel + most apps (not TroubleHub; use TroubleHub Vault)
             </span>
           </label>
 
@@ -314,7 +343,8 @@ function AdminUsersPage() {
               </div>
               {roleForm.isSystemAdmin && (
                 <p style={{ margin: "0.4rem 0 0", fontSize: "0.82rem", color: "var(--muted-text)" }}>
-                  System Admin grants access to all applications automatically.
+                  System Admin grants most apps automatically. TroubleHub stays locked — elevate under
+                  TroubleHub Vault to grant players.
                 </p>
               )}
             </div>
@@ -353,22 +383,49 @@ function AdminUsersPage() {
       {status && <p className="status">{status}</p>}
       {error && <p className="error">{error}</p>}
 
+      <h3>Currently signed in</h3>
+      {loading && onlineUsers.length === 0 ? (
+        <p>Loading...</p>
+      ) : onlineUsers.length === 0 ? (
+        <p style={{ color: "var(--muted-text)" }}>No active sessions.</p>
+      ) : (
+        <DataTable
+          storageKey="data-table:admin:users-online"
+          columns={["username", "display_name", "last_seen_on"]}
+          rows={onlineUsers}
+          columnLabels={{
+            display_name: "display name",
+            last_seen_on: "last activity",
+          }}
+          formatCell={(column, value) => {
+            if (column === "last_seen_on") {
+              return formatDateTime(value);
+            }
+            return null;
+          }}
+        />
+      )}
+
       <h3>All Users</h3>
       {loading ? (
         <p>Loading...</p>
       ) : (
         <DataTable
           storageKey="data-table:admin:users"
-          columns={["id", "username", "display_name", "roles_summary"]}
+          columns={["id", "username", "display_name", "last_login", "roles_summary"]}
           rows={users.map((user) => ({
             ...user,
             roles_summary: formatRolesSummary(user.roles ?? []),
           }))}
           columnLabels={{
             display_name: "display name",
+            last_login: "last login",
             roles_summary: "roles",
           }}
           formatCell={(column, value) => {
+            if (column === "last_login") {
+              return formatDateTime(value);
+            }
             if (column === "roles_summary" && value === "none") {
               return <span style={{ color: "var(--muted-text)" }}>none</span>;
             }

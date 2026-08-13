@@ -7,7 +7,12 @@ export const APP_USER_ROLES = {
   "site-tracker": "site_tracker_user",
   training: "training_user",
   calendar: "calendar_user",
+  home_inventory: "home_inventory_user",
+  troublehub: "troublehub_user",
 };
+
+/** Apps system admins do NOT auto-receive (explicit role or session elevation only). */
+export const ADMIN_EXPLICIT_APPS = new Set(["troublehub"]);
 
 /** Apps that offer more than one assignable role (still one role per app per user). */
 export const APP_ROLE_OPTIONS = {
@@ -26,6 +31,8 @@ export const APP_ROLE_LABELS = {
   training_user: "Training user",
   calendar_user: "Calendar user",
   calendar_view: "Calendar view",
+  home_inventory_user: "Home Inventory user",
+  troublehub_user: "TroubleHub player",
 };
 
 export function getAppUserRole(appName) {
@@ -57,20 +64,34 @@ export function isSystemAdminRole(roles = []) {
   return roles.some((role) => role.application === "system" && role.role === "admin");
 }
 
-/** True if the user may open an app (system admin or any allowed role for that app). */
-export function userHasAppAccess(roles = [], appName, isAdmin = false) {
+/**
+ * True if the user may open an app.
+ * Vault apps in ADMIN_EXPLICIT_APPS never open via system-admin bypass.
+ * Pass `troublehubAdminElevated` for session elevation access.
+ */
+export function userHasAppAccess(roles = [], appName, isAdmin = false, options = {}) {
+  const allowed = getAllowedAppRoles(appName);
+  const hasExplicitRole =
+    allowed.length > 0 &&
+    roles.some(
+      (role) =>
+        role.application === appName &&
+        (allowed.includes(role.role) || role.role === "member")
+    );
+
+  if (ADMIN_EXPLICIT_APPS.has(appName)) {
+    if (hasExplicitRole) return true;
+    const elevated = Boolean(options.troublehubAdminElevated);
+    return (isAdmin || isSystemAdminRole(roles)) && elevated;
+  }
+
   if (isAdmin || isSystemAdminRole(roles)) {
     return true;
   }
-  const allowed = getAllowedAppRoles(appName);
   if (allowed.length === 0) {
     return false;
   }
-  return roles.some(
-    (role) =>
-      role.application === appName &&
-      (allowed.includes(role.role) || role.role === "member")
-  );
+  return hasExplicitRole;
 }
 
 export function userHasCalendarEditAccess(roles = [], isAdmin = false) {
@@ -115,10 +136,14 @@ export function formToRoles(roleForm) {
   const roles = [];
   if (roleForm.isSystemAdmin) {
     roles.push({ application: "system", role: "admin" });
-    return roles;
   }
   for (const [app, value] of Object.entries(roleForm.apps ?? {})) {
     if (!value) continue;
+    // System admins don't store ordinary app rows; vault apps are managed separately
+    // and must survive user saves when already granted.
+    if (roleForm.isSystemAdmin && !ADMIN_EXPLICIT_APPS.has(app)) {
+      continue;
+    }
     const role =
       typeof value === "string"
         ? value

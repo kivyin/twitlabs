@@ -216,6 +216,9 @@ function AdminTablesPage() {
           </button>
         </div>
       </div>
+      <p className="subtext">
+        Dictionary collections for every app, including Budget data tables. Use Open to browse records.
+      </p>
 
       <h3>{form.id ? "Edit Table" : "New Table"}</h3>
       <AdminDictionaryForm

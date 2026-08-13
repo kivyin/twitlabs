@@ -1,6 +1,7 @@
 import { reportClientError } from "./logsApi";
 
 let unauthorizedHandler = null;
+let forbiddenHandler = null;
 
 /** Register a callback for 401 responses (session expired / logged out). */
 export function setUnauthorizedHandler(handler) {
@@ -9,6 +10,15 @@ export function setUnauthorizedHandler(handler) {
 
 export function triggerUnauthorized(payload = {}) {
   unauthorizedHandler?.(payload);
+}
+
+/** Register a callback for 403 responses (missing app/role permission). */
+export function setForbiddenHandler(handler) {
+  forbiddenHandler = handler;
+}
+
+export function triggerForbidden(payload = {}) {
+  forbiddenHandler?.(payload);
 }
 
 const TOKEN_KEY = "auth_token";
@@ -34,6 +44,7 @@ export async function apiRequest(path, options = {}) {
   const {
     headers: extraHeaders,
     skipUnauthorizedHandler = false,
+    skipForbiddenHandler = false,
     skipErrorLog = false,
     ...rest
   } = options;
@@ -66,6 +77,14 @@ export async function apiRequest(path, options = {}) {
 
   if (response.status === 401 && !skipUnauthorizedHandler && path !== "/api/auth/login") {
     triggerUnauthorized(payload);
+  }
+
+  if (response.status === 403 && !skipForbiddenHandler) {
+    triggerForbidden({
+      ...payload,
+      path,
+      method: rest.method || "GET",
+    });
   }
 
   if (!response.ok) {

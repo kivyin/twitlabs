@@ -1360,6 +1360,18 @@
   overflow: visible;
 }
 
+/* Scrollable modals need overflow; the frame rule above would clip/hide scrolling. */
+[data-theme="lcars"] .modal-card.dashboard-modal,
+[data-theme="lcars"] .modal-card.modal-card-wide,
+[data-theme="lcars"] .modal-card.notes-modal,
+[data-theme="lcars"] .dashboard-modal {
+  overflow: auto;
+}
+
+[data-theme="lcars"] .app-modal {
+  overflow: hidden;
+}
+
 [data-theme="lcars"] .panel.inset-panel {
   border-left-color: var(--lcars-lavender);
   border-radius: var(--lcars-frame-sm);

@@ -18,8 +18,7 @@ const SIZES = {
 /**
  * Accessible dialog shell: role="dialog", aria-modal, labelling, a focus
  * trap, Escape-to-close, backdrop click, and focus restoration on close.
- * Replaces the ~8 hand-rolled `.modal-backdrop` / `.modal-card` pairs
- * scattered across the app (ConfirmModal, BrandSettingsModal, ...).
+ * On small screens the body scrolls so title/actions stay reachable.
  */
 function Modal({
   open,
@@ -81,7 +80,7 @@ function Modal({
 
   return (
     <div
-      className="fixed inset-0 z-[1000] flex items-center justify-center p-4 bg-[var(--overlay-backdrop)] backdrop-blur-[2px] animate-[fade-in_140ms_ease]"
+      className="app-modal-backdrop fixed inset-0 z-[1000] overflow-y-auto overscroll-contain bg-[var(--overlay-backdrop)] backdrop-blur-[2px] animate-[fade-in_140ms_ease]"
       onMouseDown={(event) => {
         if (closeOnBackdrop && event.target === event.currentTarget) {
           onClose?.();
@@ -89,34 +88,51 @@ function Modal({
       }}
     >
       <div
-        ref={dialogRef}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={title ? titleId : undefined}
-        aria-describedby={description ? descId : undefined}
-        tabIndex={-1}
-        className={[
-          "app-modal w-full rounded-lg border border-border bg-surface shadow-md p-6 outline-none animate-[pop-in_160ms_ease]",
-          SIZES[size] ?? SIZES.md,
-          className,
-        ]
-          .filter(Boolean)
-          .join(" ")}
+        className="app-modal-frame flex min-h-full items-center justify-center p-3 sm:p-4"
+        onMouseDown={(event) => {
+          if (closeOnBackdrop && event.target === event.currentTarget) {
+            onClose?.();
+          }
+        }}
       >
-        {title && (
-          <h2 id={titleId} className="mt-0">
-            {title}
-          </h2>
-        )}
-        {description && (
-          <p id={descId} className="text-muted mb-5">
-            {description}
-          </p>
-        )}
-        {children}
-        {footer && (
-          <div className="flex gap-2 flex-wrap justify-end pt-4 mt-4 border-t border-border">{footer}</div>
-        )}
+        <div
+          ref={dialogRef}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby={title ? titleId : undefined}
+          aria-describedby={description ? descId : undefined}
+          tabIndex={-1}
+          className={[
+            "app-modal w-full rounded-lg border border-border bg-surface shadow-md outline-none animate-[pop-in_160ms_ease] flex flex-col",
+            SIZES[size] ?? SIZES.md,
+            className,
+          ]
+            .filter(Boolean)
+            .join(" ")}
+        >
+          {(title || description) && (
+            <div className="app-modal-header shrink-0 px-5 pt-5 sm:px-6 sm:pt-6">
+              {title && (
+                <h2 id={titleId} className="mt-0 mb-0">
+                  {title}
+                </h2>
+              )}
+              {description && (
+                <p id={descId} className="text-muted mt-2 mb-0">
+                  {description}
+                </p>
+              )}
+            </div>
+          )}
+          <div className="app-modal-body min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-4 sm:px-6">
+            {children}
+          </div>
+          {footer && (
+            <div className="app-modal-footer shrink-0 flex gap-2 flex-wrap justify-end px-5 py-4 sm:px-6 border-t border-border">
+              {footer}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

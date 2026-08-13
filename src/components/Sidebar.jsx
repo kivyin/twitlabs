@@ -7,6 +7,7 @@ import { useBrowseStack } from "../context/BrowseStackContext";
 import { useFavorites } from "../context/FavoritesContext";
 import { useBranding } from "../context/BrandingContext";
 import { useTheme } from "../context/ThemeContext";
+import { useLcarsEffects } from "../hooks/useLcarsEffects";
 import { useNavLayoutPreferences } from "../hooks/useNavLayoutPreferences";
 import { locationToPath } from "../utils/browseStack";
 import { getNavIcon, navIcons } from "../utils/navIcons";
@@ -199,6 +200,7 @@ function Sidebar({
   const { visits, clearStack } = useBrowseStack();
   const { fullTitle } = useBranding();
   const { resolvedTheme } = useTheme();
+  const { navPulseEnabled } = useLcarsEffects();
   const isLcars = resolvedTheme === "lcars";
   const location = useLocation();
   const sidebarRef = useRef(null);
@@ -257,7 +259,7 @@ function Sidebar({
 
   // LCARS: chase pulse down the rail, then back up — synced with header scanner.
   useEffect(() => {
-    if (!isLcars) return undefined;
+    if (!isLcars || !navPulseEnabled) return undefined;
     const root = sidebarRef.current;
     if (!root) return undefined;
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
@@ -292,7 +294,7 @@ function Sidebar({
       unsubscribe();
       clearHot();
     };
-  }, [isLcars, activeTab, appMains, adminMains, favorites, historyPaths]);
+  }, [isLcars, navPulseEnabled, activeTab, appMains, adminMains, favorites, historyPaths]);
 
   const navItemClass = ({ isActive }) => `sidebar-link${isActive ? " active" : ""}`;
   const subItemClass = ({ isActive }) =>

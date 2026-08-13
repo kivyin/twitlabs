@@ -465,7 +465,14 @@ function CalendarPage() {
         event={modal.event}
         defaults={modal.defaults}
         users={users}
-        canEdit={canEdit}
+        canEdit={
+          canEdit &&
+          !(
+            modal.event?.is_private &&
+            Number(modal.event.created_by) !== Number(user?.id)
+          )
+        }
+        currentUserId={user?.id}
         saving={saving}
         onClose={() => setModal({ open: false, mode: "create", event: null, defaults: null })}
         onSave={handleSave}

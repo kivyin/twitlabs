@@ -1,4 +1,5 @@
-import { Navigate, Outlet, Route, Routes, useLocation, useParams } from "react-router-dom";
+import { useEffect } from "react";
+import { Navigate, Outlet, Route, Routes, useLocation, useNavigate, useParams } from "react-router-dom";
 import AppShell from "./components/AppShell";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { AuthProvider, useAuth } from "./context/AuthContext";
@@ -6,6 +7,7 @@ import { BrandingProvider } from "./context/BrandingContext";
 import { BrowseStackProvider } from "./context/BrowseStackContext";
 import { FavoritesProvider } from "./context/FavoritesContext";
 import { ThemeProvider } from "./context/ThemeContext";
+import { setForbiddenHandler } from "./api/http";
 import AdminPage from "./pages/AdminPage";
 import AdminApplicationsPage from "./pages/admin/AdminApplicationsPage";
 import AdminBackupPage from "./pages/admin/AdminBackupPage";
@@ -16,6 +18,16 @@ import AdminNavigationPage from "./pages/admin/AdminNavigationPage";
 import AdminTablesPage from "./pages/admin/AdminTablesPage";
 import AdminUsersPage from "./pages/admin/AdminUsersPage";
 import AdminZeroBootPage from "./pages/admin/AdminZeroBootPage";
+import AdminTroublehubPage from "./pages/admin/AdminTroublehubPage";
+import AccessDeniedPage from "./pages/AccessDeniedPage";
+import TroubleHubAppGuard from "./pages/troublehub/TroubleHubAppGuard";
+import MatchMischiefPage from "./pages/troublehub/MatchMischiefPage";
+import MatchComparePage from "./pages/troublehub/MatchComparePage";
+import MatchRandomPlayPage from "./pages/troublehub/MatchRandomPlayPage";
+import FantasiesHomePage from "./pages/troublehub/FantasiesHomePage";
+import FantasiesSetupPage from "./pages/troublehub/FantasiesSetupPage";
+import FantasiesDeckPage from "./pages/troublehub/FantasiesDeckPage";
+import FantasiesPlayPage from "./pages/troublehub/FantasiesPlayPage";
 import AppNavigatorPage from "./pages/AppNavigatorPage";
 import AccountRegisterPage from "./pages/AccountRegisterPage";
 import AppIdePage from "./pages/AppIdePage";
@@ -49,29 +61,77 @@ import TrainingHistoryPage from "./pages/training/TrainingHistoryPage";
 import TrainingProgressPage from "./pages/training/TrainingProgressPage";
 import TrainingMeasurementsPage from "./pages/training/TrainingMeasurementsPage";
 import TrainingCoachPage from "./pages/training/TrainingCoachPage";
+import TrainingProgramPage from "./pages/training/TrainingProgramPage";
 import DocsHomePage from "./pages/docs/DocsHomePage";
 import DocsAppPage from "./pages/docs/DocsAppPage";
 import DocsTopicPage from "./pages/docs/DocsTopicPage";
 import VersionsPage from "./pages/VersionsPage";
 
+function denyAccessState(location, message) {
+  return {
+    from: `${location.pathname}${location.search}${location.hash}`,
+    message,
+  };
+}
+
 // Guards access to /app/:appName/* routes based on role
 function AppAccessGuard() {
   const { appName } = useParams();
+  const location = useLocation();
   const { canAccessApp } = useAuth();
-  if (!canAccessApp(appName)) return <Navigate to="/" replace />;
+  if (!canAccessApp(appName)) {
+    return (
+      <Navigate
+        to="/access-denied"
+        replace
+        state={denyAccessState(
+          location,
+          `You do not have access to the “${appName}” app.`
+        )}
+      />
+    );
+  }
   return <Outlet />;
 }
 
 // Guards the hardcoded /budget/* routes
 function BudgetGuard() {
+  const location = useLocation();
   const { canAccessApp } = useAuth();
-  if (!canAccessApp("budget")) return <Navigate to="/" replace />;
+  if (!canAccessApp("budget")) {
+    return (
+      <Navigate
+        to="/access-denied"
+        replace
+        state={denyAccessState(location, "You do not have access to Budget.")}
+      />
+    );
+  }
   return <Outlet />;
 }
 
 function ProtectedLayout() {
   const { user, loading } = useAuth();
   const location = useLocation();
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    setForbiddenHandler((payload) => {
+      if (location.pathname === "/access-denied") return;
+      navigate("/access-denied", {
+        replace: true,
+        state: {
+          from: `${location.pathname}${location.search}${location.hash}`,
+          message:
+            payload?.error ||
+            "You do not have permission to access that data or action.",
+          apiPath: payload?.path || "",
+        },
+      });
+    });
+    return () => setForbiddenHandler(null);
+  }, [navigate, location.pathname, location.search, location.hash]);
+
   if (loading) return null;
   if (!user) {
     return (
@@ -89,6 +149,7 @@ function ProtectedLayout() {
       <ErrorBoundary>
         <Routes>
           <Route path="/" element={<AppNavigatorPage />} />
+          <Route path="/access-denied" element={<AccessDeniedPage />} />
 
           <Route path="/docs" element={<DocsHomePage />} />
           <Route path="/docs/:appName" element={<DocsAppPage />} />
@@ -124,6 +185,7 @@ function ProtectedLayout() {
             <Route path="workout" element={<TrainingAppGuard><TrainingWorkoutPage /></TrainingAppGuard>} />
             <Route path="workout/:workoutId" element={<TrainingAppGuard><TrainingWorkoutPage /></TrainingAppGuard>} />
             <Route path="coach" element={<TrainingAppGuard><TrainingCoachPage /></TrainingAppGuard>} />
+            <Route path="programs/:programId" element={<TrainingAppGuard><TrainingProgramPage /></TrainingAppGuard>} />
             <Route path="routines" element={<TrainingAppGuard><TrainingRoutinesPage /></TrainingAppGuard>} />
             <Route path="routines/new" element={<TrainingAppGuard><TrainingRoutineEditPage /></TrainingAppGuard>} />
             <Route path="routines/:recordId" element={<TrainingAppGuard><TrainingRoutineEditPage /></TrainingAppGuard>} />
@@ -131,6 +193,14 @@ function ProtectedLayout() {
             <Route path="history" element={<TrainingAppGuard><TrainingHistoryPage /></TrainingAppGuard>} />
             <Route path="progress" element={<TrainingAppGuard><TrainingProgressPage /></TrainingAppGuard>} />
             <Route path="measurements" element={<TrainingAppGuard><TrainingMeasurementsPage /></TrainingAppGuard>} />
+            <Route path="match/compare" element={<TroubleHubAppGuard><MatchComparePage /></TroubleHubAppGuard>} />
+            <Route path="match/play" element={<TroubleHubAppGuard><MatchRandomPlayPage /></TroubleHubAppGuard>} />
+            <Route path="match" element={<TroubleHubAppGuard><MatchMischiefPage /></TroubleHubAppGuard>} />
+            <Route path="fantasies/start" element={<TroubleHubAppGuard><FantasiesSetupPage mode="start" /></TroubleHubAppGuard>} />
+            <Route path="fantasies/join" element={<TroubleHubAppGuard><FantasiesSetupPage mode="join" /></TroubleHubAppGuard>} />
+            <Route path="fantasies/deck" element={<TroubleHubAppGuard><FantasiesDeckPage /></TroubleHubAppGuard>} />
+            <Route path="fantasies/play" element={<TroubleHubAppGuard><FantasiesPlayPage /></TroubleHubAppGuard>} />
+            <Route path="fantasies" element={<TroubleHubAppGuard><FantasiesHomePage /></TroubleHubAppGuard>} />
             <Route path="reports" element={<ReportCenterPage />} />
             <Route path="reports/:reportKey" element={<ReportDetailPage />} />
             <Route path="accounts/:accountId/register" element={<AccountRegisterPage />} />
@@ -152,6 +222,7 @@ function ProtectedLayout() {
             <Route path="tables" element={<AdminTablesPage />} />
             <Route path="fields" element={<AdminFieldsPage />} />
             <Route path="users" element={<AdminUsersPage />} />
+            <Route path="troublehub" element={<AdminTroublehubPage />} />
             <Route path="deletes" element={<AdminDeletesPage />} />
             <Route path="logs" element={<AdminLogsPage />} />
             <Route path="navigation" element={<AdminNavigationPage />} />

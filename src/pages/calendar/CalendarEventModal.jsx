@@ -28,6 +28,7 @@ function emptyForm(defaults = {}) {
     end_date: formatDateInput(end),
     end_time: formatTimeInput(end),
     all_day: Boolean(defaults.all_day),
+    is_private: Boolean(defaults.is_private),
     recurrence: defaults.recurrence || "none",
     recurrence_until: defaults.recurrence_until || "",
     notes: defaults.notes || "",
@@ -48,6 +49,7 @@ function CalendarEventModal({
   defaults = null,
   users = [],
   canEdit = true,
+  currentUserId = null,
   saving = false,
   onClose,
   onSave,
@@ -55,6 +57,11 @@ function CalendarEventModal({
 }) {
   const [form, setForm] = useState(() => emptyForm());
   const [error, setError] = useState("");
+  const canTogglePrivate =
+    canEdit &&
+    (mode === "create" ||
+      event == null ||
+      Number(event.created_by) === Number(currentUserId));
 
   useEffect(() => {
     if (!open) return;
@@ -73,6 +80,7 @@ function CalendarEventModal({
           start,
           end,
           all_day: event.all_day,
+          is_private: event.is_private,
           recurrence: event.recurrence || "none",
           recurrence_until: untilDateInput(event.recurrence_until),
           notes: event.notes || "",
@@ -117,6 +125,7 @@ function CalendarEventModal({
         start_at,
         end_at,
         all_day: form.all_day,
+        is_private: form.is_private,
         recurrence: form.recurrence || "none",
         recurrence_until: isRecurring && form.recurrence_until ? form.recurrence_until : null,
         notes: form.notes,
@@ -186,6 +195,16 @@ function CalendarEventModal({
               disabled={!canEdit || saving}
             />
             All day
+          </label>
+
+          <label className="calendar-checkbox-row">
+            <input
+              type="checkbox"
+              checked={form.is_private}
+              onChange={(e) => updateField("is_private", e.target.checked)}
+              disabled={!canTogglePrivate || saving}
+            />
+            Private (only you can see)
           </label>
 
           <div className="calendar-form-row">

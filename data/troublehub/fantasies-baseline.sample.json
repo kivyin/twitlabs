@@ -1,0 +1,170 @@
+[
+  {
+    "audience": "male",
+    "category": "romantic",
+    "title": "Slow dance in the kitchen",
+    "description": "Dim the lights, put on a favorite song, and dance together with nowhere to be.",
+    "sort_order": 10
+  },
+  {
+    "audience": "male",
+    "category": "romantic",
+    "title": "Handwritten note trail",
+    "description": "Leave a path of short notes leading to a planned evening just for the two of you.",
+    "sort_order": 20
+  },
+  {
+    "audience": "male",
+    "category": "romantic",
+    "title": "Sunrise coffee in bed",
+    "description": "Wake early, bring coffee (or tea), and stay under the covers talking until you're ready.",
+    "sort_order": 30
+  },
+  {
+    "audience": "male",
+    "category": "romantic",
+    "title": "Memory lane walk",
+    "description": "Revisit a place that mattered early in your relationship and recreate a small moment.",
+    "sort_order": 40
+  },
+  {
+    "audience": "male",
+    "category": "naughty",
+    "title": "Dress-code dare",
+    "description": "One partner picks the outfit for the night out — playful, flattering, and a little daring.",
+    "sort_order": 50
+  },
+  {
+    "audience": "male",
+    "category": "naughty",
+    "title": "Phone flirt all day",
+    "description": "Send teasing messages throughout the day that build anticipation for the evening.",
+    "sort_order": 60
+  },
+  {
+    "audience": "male",
+    "category": "naughty",
+    "title": "Blindfold taste test",
+    "description": "Blindfold optional. Feed each other something sweet and savor the moment slowly.",
+    "sort_order": 70
+  },
+  {
+    "audience": "male",
+    "category": "naughty",
+    "title": "Shower surprise",
+    "description": "Join for a warm shower with soft lighting, music, and no rush.",
+    "sort_order": 80
+  },
+  {
+    "audience": "male",
+    "category": "kinky",
+    "title": "Alias for a night",
+    "description": "Invent new names and stay in character until you both agree to drop the act.",
+    "sort_order": 90
+  },
+  {
+    "audience": "male",
+    "category": "kinky",
+    "title": "Yes / No / Try list",
+    "description": "Share three yeses, three maybes, and one hard no — then pick one maybe to explore safely.",
+    "sort_order": 100
+  },
+  {
+    "audience": "male",
+    "category": "kinky",
+    "title": "Control switch",
+    "description": "Agree on a safe word. One leads for a set window of time; then switch if you both want.",
+    "sort_order": 110
+  },
+  {
+    "audience": "male",
+    "category": "kinky",
+    "title": "Sensory playlist",
+    "description": "Build a short sensory scene: sound, temperature, touch — keep it consensual and paced.",
+    "sort_order": 120
+  },
+  {
+    "audience": "female",
+    "category": "romantic",
+    "title": "Picnic at home",
+    "description": "Blanket on the floor, favorite snacks, candles, and phones away for an hour.",
+    "sort_order": 130
+  },
+  {
+    "audience": "female",
+    "category": "romantic",
+    "title": "Compliment hour",
+    "description": "Take turns saying what you genuinely admire — keep going until it feels a little vulnerable.",
+    "sort_order": 140
+  },
+  {
+    "audience": "female",
+    "category": "romantic",
+    "title": "Bath drawn for you",
+    "description": "Prepare a bath with music and a drink nearby. Sit close and talk, or sit in quiet.",
+    "sort_order": 150
+  },
+  {
+    "audience": "female",
+    "category": "romantic",
+    "title": "First-date redo",
+    "description": "Plan a night as if you're meeting again — dress up, ask curious questions, walk them to the door.",
+    "sort_order": 160
+  },
+  {
+    "audience": "female",
+    "category": "naughty",
+    "title": "Mirror moment",
+    "description": "Get ready together in front of a mirror — eye contact, teasing, and unhurried attention.",
+    "sort_order": 170
+  },
+  {
+    "audience": "female",
+    "category": "naughty",
+    "title": "Stolen hallway kiss",
+    "description": "Catch each other between chores for a lingering kiss that isn't rushed.",
+    "sort_order": 180
+  },
+  {
+    "audience": "female",
+    "category": "naughty",
+    "title": "Massage with intent",
+    "description": "A full back-and-shoulders massage that can stay sweet — or escalate if you both want.",
+    "sort_order": 190
+  },
+  {
+    "audience": "female",
+    "category": "naughty",
+    "title": "Late-night kitchen raid",
+    "description": "Midnight snack together, then linger in the kitchen longer than necessary.",
+    "sort_order": 200
+  },
+  {
+    "audience": "female",
+    "category": "kinky",
+    "title": "Rules for the evening",
+    "description": "Write three playful rules for the night. Keep consent clear and check in often.",
+    "sort_order": 210
+  },
+  {
+    "audience": "female",
+    "category": "kinky",
+    "title": "Temperature play light",
+    "description": "Ice cube or warm cloth — keep it gentle, verbal, and easy to stop.",
+    "sort_order": 220
+  },
+  {
+    "audience": "female",
+    "category": "kinky",
+    "title": "Voice-only tease",
+    "description": "Lights low. Use only words for a set time before any touch.",
+    "sort_order": 230
+  },
+  {
+    "audience": "female",
+    "category": "kinky",
+    "title": "Restraint-lite",
+    "description": "Soft scarf or holding wrists — agreed duration, safe word, and aftercare.",
+    "sort_order": 240
+  }
+]

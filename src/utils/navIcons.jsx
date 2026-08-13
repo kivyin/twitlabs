@@ -20,6 +20,8 @@ export const NAV_ICON_OPTIONS = [
   { value: "site-tracker", label: "Site Tracker" },
   { value: "training", label: "Training" },
   { value: "calendar", label: "Calendar" },
+  { value: "home_inventory", label: "Home Inventory" },
+  { value: "troublehub", label: "TroubleHub" },
   { value: "sparkles", label: "AI Coach" },
 ];
 
@@ -149,6 +151,21 @@ export const navIcons = {
       <path d="M3 10h18" />
       <path d="M8 3v4M16 3v4" />
       <path d="M8 14h2M12 14h2M16 14h1M8 17h2M12 17h2" />
+    </>
+  ),
+  home_inventory: (
+    <>
+      <path d="M4 7h16v12H4z" />
+      <path d="M4 11h16" />
+      <path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+      <path d="M9 15h2M13 15h2" />
+    </>
+  ),
+  troublehub: (
+    <>
+      <rect x="5" y="11" width="14" height="10" rx="2" />
+      <path d="M8 11V8a4 4 0 0 1 8 0v3" />
+      <circle cx="12" cy="16" r="1.5" fill="currentColor" stroke="none" />
     </>
   ),
   sparkles: (

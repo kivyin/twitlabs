@@ -154,9 +154,18 @@ export function AuthProvider({ children }) {
   );
 
   const canAccessApp = useCallback(
-    (appName) => userHasAppAccess(user?.roles ?? [], appName, isAdmin),
-    [user?.roles, isAdmin]
+    (appName) =>
+      userHasAppAccess(user?.roles ?? [], appName, isAdmin, {
+        troublehubAdminElevated: Boolean(user?.troublehub_admin_elevated),
+      }),
+    [user?.roles, user?.troublehub_admin_elevated, isAdmin]
   );
+
+  const setTroublehubAdminElevated = useCallback((elevated) => {
+    setUser((current) =>
+      current ? { ...current, troublehub_admin_elevated: Boolean(elevated) } : current
+    );
+  }, []);
 
   const value = useMemo(
     () => ({
@@ -172,6 +181,7 @@ export function AuthProvider({ children }) {
       clearAuthMessage,
       isAdmin,
       canAccessApp,
+      setTroublehubAdminElevated,
     }),
     [
       user,
@@ -185,6 +195,7 @@ export function AuthProvider({ children }) {
       clearAuthMessage,
       isAdmin,
       canAccessApp,
+      setTroublehubAdminElevated,
     ]
   );
 

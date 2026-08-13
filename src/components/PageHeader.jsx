@@ -9,6 +9,7 @@ import LcarsProgressLight from "./LcarsProgressLight";
 import { useAuth } from "../context/AuthContext";
 import { useBrowseStack } from "../context/BrowseStackContext";
 import { useTheme } from "../context/ThemeContext";
+import { useLcarsEffects } from "../hooks/useLcarsEffects";
 import { usePageHelpFromPath } from "../utils/docHelp";
 
 function resolveBackFallback(breadcrumbs) {
@@ -43,6 +44,7 @@ function PageHeader({
   const resolvedHelp = help === false ? null : help ?? autoHelp;
   const { goBack } = useBrowseStack();
   const { resolvedTheme } = useTheme();
+  const { progressLightEnabled } = useLcarsEffects();
   const isLcars = resolvedTheme === "lcars";
   const backFallback = useMemo(() => resolveBackFallback(breadcrumbs), [breadcrumbs]);
   const displayName = user?.display_name || user?.username || "";
@@ -129,7 +131,7 @@ function PageHeader({
               <span className="page-header-commands-spacer" aria-hidden="true" />
             )}
           </div>
-          {isLcars ? <LcarsProgressLight /> : null}
+          {isLcars && progressLightEnabled ? <LcarsProgressLight /> : null}
           <div className="page-header-commands-end page-actions">{commandActions}</div>
         </div>
 

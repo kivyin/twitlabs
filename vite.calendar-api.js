@@ -167,6 +167,9 @@ function parseEventPayload(body = {}) {
     throw new Error("Repeat until date must be on or after the start date.");
   }
 
+  // Default public; only true/1/"true" marks private.
+  const isPrivate = body.is_private === true || body.is_private === 1 || body.is_private === "1";
+
   return {
     title,
     assignee_user_id: assigneeUserId,
@@ -177,6 +180,7 @@ function parseEventPayload(body = {}) {
     all_day: allDay ? 1 : 0,
     recurrence,
     recurrence_until: recurrence ? recurrenceUntil : null,
+    is_private: isPrivate ? 1 : 0,
   };
 }
 
@@ -210,6 +214,7 @@ export function installCalendarApi(deps) {
         notes TEXT,
         color TEXT,
         all_day INTEGER NOT NULL DEFAULT 0,
+        is_private INTEGER NOT NULL DEFAULT 0,
         recurrence TEXT,
         recurrence_until TEXT,
         created_by INTEGER,
@@ -223,6 +228,11 @@ export function installCalendarApi(deps) {
     }
     if (!hasColumn(CALENDAR_EVENTS_TABLE, "recurrence_until")) {
       run(`ALTER TABLE ${CALENDAR_EVENTS_TABLE} ADD COLUMN recurrence_until TEXT`);
+    }
+    if (!hasColumn(CALENDAR_EVENTS_TABLE, "is_private")) {
+      run(
+        `ALTER TABLE ${CALENDAR_EVENTS_TABLE} ADD COLUMN is_private INTEGER NOT NULL DEFAULT 0`
+      );
     }
     run(
       `CREATE INDEX IF NOT EXISTS idx_calendar_events_start ON ${CALENDAR_EVENTS_TABLE} (start_at)`
@@ -292,6 +302,7 @@ export function installCalendarApi(deps) {
       notes: row.notes,
       color: row.color,
       all_day: Boolean(row.all_day),
+      is_private: Boolean(row.is_private),
       recurrence,
       recurrence_until: row.recurrence_until || null,
       is_recurring: Boolean(recurrence),
@@ -305,7 +316,21 @@ export function installCalendarApi(deps) {
     };
   };
 
-  const getEventById = (id) => {
+  const canViewEventRow = (row, viewerUserId) => {
+    if (!row) return false;
+    if (!row.is_private) return true;
+    return Number(row.created_by) === Number(viewerUserId);
+  };
+
+  const canMutateEvent = (event, actingUser) => {
+    if (!event) return false;
+    if (event.is_private) {
+      return Number(event.created_by) === Number(actingUser.id);
+    }
+    return userCanEditCalendar(actingUser) || isSessionAdmin(actingUser);
+  };
+
+  const getEventById = (id, viewerUserId = null) => {
     const row = all(
       `
         SELECT e.*,
@@ -317,6 +342,10 @@ export function installCalendarApi(deps) {
       `,
       [id]
     )[0];
+    if (!row) return null;
+    if (viewerUserId != null && !canViewEventRow(row, viewerUserId)) {
+      return null;
+    }
     return mapEventRow(row);
   };
 
@@ -380,9 +409,14 @@ export function installCalendarApi(deps) {
     return instances;
   };
 
-  const listEvents = ({ from, to } = {}) => {
+  const listEvents = ({ from, to, viewerUserId } = {}) => {
     const fromAt = from ? normalizeDateTime(from, { endOfDay: false }) : null;
     const toAt = to ? normalizeDateTime(to, { endOfDay: true }) : null;
+    const viewerId = Number(viewerUserId);
+    const privacySql =
+      Number.isFinite(viewerId) && viewerId > 0
+        ? " AND (IFNULL(e.is_private, 0) = 0 OR e.created_by = ?)"
+        : " AND IFNULL(e.is_private, 0) = 0";
 
     const oneOffParams = [];
     let oneOffWhere =
@@ -396,6 +430,10 @@ export function installCalendarApi(deps) {
     } else if (toAt) {
       oneOffWhere += " AND e.start_at < ?";
       oneOffParams.push(toAt);
+    }
+    oneOffWhere += privacySql;
+    if (Number.isFinite(viewerId) && viewerId > 0) {
+      oneOffParams.push(viewerId);
     }
 
     const oneOffRows = all(
@@ -420,6 +458,10 @@ export function installCalendarApi(deps) {
     if (fromAt) {
       recurringWhere += " AND (e.recurrence_until IS NULL OR e.recurrence_until >= ?)";
       recurringParams.push(fromAt);
+    }
+    recurringWhere += privacySql;
+    if (Number.isFinite(viewerId) && viewerId > 0) {
+      recurringParams.push(viewerId);
     }
 
     const recurringRows = all(
@@ -460,10 +502,23 @@ export function installCalendarApi(deps) {
     return getEventById(result.lastID);
   };
 
-  const updateEvent = (id, body, actingUserId) => {
-    const existing = getEventById(id);
+  const updateEvent = (id, body, actingUser) => {
+    const existing = getEventById(id, actingUser.id);
     if (!existing) {
       throw new Error("Event not found.");
+    }
+    if (!canMutateEvent(existing, actingUser)) {
+      throw new Error("You do not have permission to edit this event.");
+    }
+    const wantsPrivate =
+      body.is_private !== undefined
+        ? body.is_private === true || body.is_private === 1 || body.is_private === "1"
+        : existing.is_private;
+    if (wantsPrivate && Number(existing.created_by) !== Number(actingUser.id)) {
+      throw new Error("Only the event creator can make or keep an event private.");
+    }
+    if (existing.is_private && Number(existing.created_by) !== Number(actingUser.id)) {
+      throw new Error("Only the event creator can edit a private event.");
     }
     const payload = parseEventPayload({
       title: body.title ?? existing.title,
@@ -481,6 +536,7 @@ export function installCalendarApi(deps) {
         body.recurrence_until !== undefined
           ? body.recurrence_until
           : existing.recurrence_until,
+      is_private: wantsPrivate,
     });
     if (payload.assignee_user_id != null) {
       const user = all(`SELECT id FROM ${USERS_TABLE} WHERE id = ? LIMIT 1`, [
@@ -490,16 +546,19 @@ export function installCalendarApi(deps) {
         throw new Error("Assignee user not found.");
       }
     }
-    updateAuditedRow(CALENDAR_EVENTS_TABLE, payload, "id = ?", [id], actingUserId);
-    return getEventById(id);
+    updateAuditedRow(CALENDAR_EVENTS_TABLE, payload, "id = ?", [id], actingUser.id);
+    return getEventById(id, actingUser.id);
   };
 
-  const deleteEvent = (id, actingUserId) => {
-    const existing = getEventById(id);
+  const deleteEvent = (id, actingUser) => {
+    const existing = getEventById(id, actingUser.id);
     if (!existing) {
       throw new Error("Event not found.");
     }
-    archiveAndDeleteRowsInternal(CALENDAR_EVENTS_TABLE, "id = ?", [id], actingUserId);
+    if (!canMutateEvent(existing, actingUser)) {
+      throw new Error("You do not have permission to delete this event.");
+    }
+    archiveAndDeleteRowsInternal(CALENDAR_EVENTS_TABLE, "id = ?", [id], actingUser.id);
   };
 
   const listAssignableUsers = () =>
@@ -716,6 +775,7 @@ export function installCalendarApi(deps) {
         const events = listEvents({
           from: url.searchParams.get("from"),
           to: url.searchParams.get("to"),
+          viewerUserId: actingUser.id,
         });
         json(res, 200, {
           events,
@@ -736,23 +796,26 @@ export function installCalendarApi(deps) {
         const id = Number(eventMatch[1]);
         if (req.method === "GET") {
           assertCalendarAccess(actingUser);
-          const event = getEventById(id);
+          const event = getEventById(id, actingUser.id);
           if (!event) {
             sendApiError(res, req, 404, "Event not found.", { function_name: "calendarApi" });
             return true;
           }
-          json(res, 200, { event });
+          json(res, 200, {
+            event,
+            can_edit: canMutateEvent(event, actingUser),
+          });
           return true;
         }
         if (req.method === "PUT") {
           assertCalendarEdit(actingUser);
           const body = await readBody(req);
-          json(res, 200, { event: updateEvent(id, body, actingUser.id) });
+          json(res, 200, { event: updateEvent(id, body, actingUser) });
           return true;
         }
         if (req.method === "DELETE") {
           assertCalendarEdit(actingUser);
-          deleteEvent(id, actingUser.id);
+          deleteEvent(id, actingUser);
           json(res, 200, { ok: true });
           return true;
         }

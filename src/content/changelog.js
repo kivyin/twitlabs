@@ -4,6 +4,21 @@
  */
 export const CHANGELOG = [
   {
+    version: "1.12.0",
+    date: "2026-08-10",
+    title: "TroubleHub vault + Match Mischief",
+    highlights: [
+      "New TroubleHub app: explicit vault that system admins do not receive by default",
+      "Administration → TroubleHub Vault: password elevation each login to grant player access",
+      "Match Mischief: card-by-card questionnaire with Yes/No/Maybe, 5-level heat ratings, wildest-dream flag, and notes",
+      "Search cards by text; Try a card page draws a random card from category / YNM / heat / wildest filters",
+      "Compare page with match %, gradients, notes, sort, and filters",
+      "Fantasies: live two-player Male/Female fantasy picker with Romantic/Naughty/Kinky cards, notes, and custom cards",
+      "Players can add custom cards (notifies other players); elevated admins import baseline JSON, edit cards, and reset answers",
+      "User menu shows Match Mischief link and unread custom-card notifications when you have access",
+    ],
+  },
+  {
     version: "1.11.0",
     date: "2026-08-04",
     title: "Calendar app",
@@ -69,6 +84,7 @@ export const CHANGELOG = [
     date: "2026-07-27",
     title: "Decision Picker app",
     highlights: [
+      "New Home Inventory app: track food by freezer/fridge location with photos, quantity, and role-gated access",
       "New Decision Picker app: add options, spin an animated wheel, and pick a random winner",
       "Confetti celebration on selection, optional remove-winner, and re-spin",
       "Option lists persist per user on the server across logouts",

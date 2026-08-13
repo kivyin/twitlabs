@@ -1,0 +1,42 @@
+[
+  {
+    "category": "Spark",
+    "idea": "Late-night kitchen raid",
+    "question": "Would you sneak a midnight snack together?",
+    "statement": "The best conversations happen over cold leftovers.",
+    "description": "A soft opener — playful, low pressure, shared mischief.",
+    "sort_order": 1
+  },
+  {
+    "category": "Adventure",
+    "idea": "Spontaneous road trip",
+    "question": "Would you leave tonight with only a half-packed bag?",
+    "statement": "Maps optional. Playlists mandatory.",
+    "description": "Test appetite for impulsiveness and shared chaos.",
+    "sort_order": 2
+  },
+  {
+    "category": "Trust",
+    "idea": "Blindfold taste test",
+    "question": "Would you let them feed you something mystery?",
+    "statement": "Trust tastes better than certainty.",
+    "description": "Consent + curiosity check.",
+    "sort_order": 3
+  },
+  {
+    "category": "Heat",
+    "idea": "Dress-code dare",
+    "question": "Would you wear what they pick for a night out?",
+    "statement": "Style is a love language — and a little dangerous.",
+    "description": "Comfort boundaries and playful control.",
+    "sort_order": 4
+  },
+  {
+    "category": "Fantasy",
+    "idea": "Alias for a night",
+    "question": "Would you invent new names and stay in character until sunrise?",
+    "statement": "Who you pretend to be can reveal who you want.",
+    "description": "Roleplay-light; mark wildest dream if it sparks hard.",
+    "sort_order": 5
+  }
+]

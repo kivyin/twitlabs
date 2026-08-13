@@ -241,15 +241,57 @@ export function installTrainingApi(deps) {
     USERS_TABLE,
     USER_PREFERENCES_TABLE,
     TRAINING_EXERCISES_TABLE,
+    TRAINING_PROGRAMS_TABLE,
     TRAINING_ROUTINES_TABLE,
     TRAINING_ROUTINE_EXERCISES_TABLE,
     TRAINING_WORKOUTS_TABLE,
     TRAINING_WORKOUT_EXERCISES_TABLE,
     TRAINING_WORKOUT_SETS_TABLE,
     TRAINING_MEASUREMENTS_TABLE,
+    CALENDAR_EVENTS_TABLE,
   } = deps;
 
   const stamp = () => new Date().toISOString().slice(0, 19).replace("T", " ");
+
+  const pad2 = (value) => String(value).padStart(2, "0");
+
+  const localDateString = (date = new Date()) =>
+    `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
+
+  const parseLocalDate = (value) => {
+    const match = String(value || "").trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!match) return null;
+    return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+  };
+
+  const addDays = (date, days) => {
+    const next = new Date(date.getFullYear(), date.getMonth(), date.getDate() + days);
+    return next;
+  };
+
+  const weekdayLabel = (date) =>
+    ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][date.getDay()];
+
+  /** Place N training days at the start of each 7-day window from startDate. */
+  const buildScheduleDates = (startDate, daysPerWeek, weekCount) => {
+    const dates = [];
+    const train = Math.min(Math.max(Number(daysPerWeek) || 4, 1), 7);
+    const weeks = Math.min(Math.max(Number(weekCount) || 5, 1), 8);
+    for (let week = 0; week < weeks; week += 1) {
+      for (let day = 0; day < 7; day += 1) {
+        const date = addDays(startDate, week * 7 + day);
+        dates.push({
+          date,
+          scheduled_on: localDateString(date),
+          plan_week: week + 1,
+          plan_day: day + 1,
+          is_training_slot: day < train,
+          day_label: weekdayLabel(date),
+        });
+      }
+    }
+    return dates;
+  };
 
   const ensureTrainingSchema = () => {
     run(`
@@ -261,6 +303,24 @@ export function installTrainingApi(deps) {
         equipment TEXT,
         notes TEXT,
         is_custom INTEGER NOT NULL DEFAULT 0,
+        created_by INTEGER,
+        created_on TEXT,
+        updated_by INTEGER,
+        updated_on TEXT
+      )
+    `);
+
+    run(`
+      CREATE TABLE IF NOT EXISTS ${TRAINING_PROGRAMS_TABLE} (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        name TEXT NOT NULL,
+        notes TEXT,
+        goals_json TEXT,
+        start_date TEXT,
+        days_per_week INTEGER,
+        week_count INTEGER,
+        progression_summary TEXT,
         created_by INTEGER,
         created_on TEXT,
         updated_by INTEGER,
@@ -375,6 +435,9 @@ export function installTrainingApi(deps) {
       `CREATE INDEX IF NOT EXISTS idx_training_exercises_user ON ${TRAINING_EXERCISES_TABLE}(user_id)`
     );
     run(
+      `CREATE INDEX IF NOT EXISTS idx_training_programs_user ON ${TRAINING_PROGRAMS_TABLE}(user_id)`
+    );
+    run(
       `CREATE INDEX IF NOT EXISTS idx_training_routines_user ON ${TRAINING_ROUTINES_TABLE}(user_id)`
     );
     run(
@@ -396,6 +459,19 @@ export function installTrainingApi(deps) {
     ensureColumn(TRAINING_ROUTINE_EXERCISES_TABLE, "target_distance", "REAL");
     ensureColumn(TRAINING_ROUTINES_TABLE, "plan_week", "INTEGER");
     ensureColumn(TRAINING_ROUTINES_TABLE, "plan_day", "INTEGER");
+    ensureColumn(TRAINING_ROUTINES_TABLE, "program_id", "INTEGER");
+    ensureColumn(TRAINING_ROUTINES_TABLE, "scheduled_on", "TEXT");
+    ensureColumn(TRAINING_ROUTINES_TABLE, "session_name", "TEXT");
+    ensureColumn(TRAINING_ROUTINES_TABLE, "day_label", "TEXT");
+    ensureColumn(TRAINING_ROUTINES_TABLE, "is_rest", "INTEGER NOT NULL DEFAULT 0");
+    ensureColumn(TRAINING_ROUTINES_TABLE, "progression_notes", "TEXT");
+    ensureColumn(TRAINING_ROUTINES_TABLE, "calendar_event_id", "INTEGER");
+    run(
+      `CREATE INDEX IF NOT EXISTS idx_training_routines_program ON ${TRAINING_ROUTINES_TABLE}(program_id, scheduled_on)`
+    );
+    run(
+      `CREATE INDEX IF NOT EXISTS idx_training_routines_scheduled ON ${TRAINING_ROUTINES_TABLE}(user_id, scheduled_on)`
+    );
 
     // Backfill AI plan week/day from names like "… · W2 · Mon · Push"
     const needsPlanOrder = all(
@@ -643,14 +719,25 @@ export function installTrainingApi(deps) {
     return { ...row, exercises: getRoutineExercises(routineId) };
   };
 
-  const listRoutines = (athleteId) => {
-    const routines = all(
+  const listRoutines = (athleteId, { programId } = {}) => {
+    const params = [athleteId];
+    let programFilter = "";
+    if (programId != null && programId !== "") {
+      programFilter = "AND r.program_id = ?";
+      params.push(Number(programId));
+    }
+    return all(
       `
         SELECT r.*,
+          p.name AS program_name,
           (SELECT COUNT(*) FROM ${TRAINING_ROUTINE_EXERCISES_TABLE} re WHERE re.routine_id = r.id) AS exercise_count
         FROM ${TRAINING_ROUTINES_TABLE} r
+        LEFT JOIN ${TRAINING_PROGRAMS_TABLE} p ON p.id = r.program_id
         WHERE r.user_id = ?
+          ${programFilter}
         ORDER BY
+          CASE WHEN r.scheduled_on IS NULL THEN 1 ELSE 0 END,
+          r.scheduled_on ASC,
           CASE WHEN r.plan_week IS NULL THEN 1 ELSE 0 END,
           r.plan_week ASC,
           CASE WHEN r.plan_day IS NULL THEN 1 ELSE 0 END,
@@ -658,9 +745,262 @@ export function installTrainingApi(deps) {
           r.created_on ASC,
           r.id ASC
       `,
+      params
+    );
+  };
+
+  const getProgramOrThrow = (programId, athleteId) => {
+    const row = all(
+      `SELECT * FROM ${TRAINING_PROGRAMS_TABLE} WHERE id = ? AND user_id = ? LIMIT 1`,
+      [programId, athleteId]
+    )[0];
+    if (!row) throw new Error("Program not found.");
+    let goals = [];
+    try {
+      goals = JSON.parse(row.goals_json || "[]");
+    } catch {
+      goals = [];
+    }
+    const days = listRoutines(athleteId, { programId }).map((routine) => ({
+      ...routine,
+      exercises: routine.is_rest ? [] : getRoutineExercises(routine.id),
+    }));
+    return {
+      ...row,
+      goals: Array.isArray(goals) ? goals : [],
+      days,
+      training_day_count: days.filter((day) => !day.is_rest).length,
+    };
+  };
+
+  const listPrograms = (athleteId) =>
+    all(
+      `
+        SELECT p.*,
+          (SELECT COUNT(*) FROM ${TRAINING_ROUTINES_TABLE} r
+            WHERE r.program_id = p.id AND IFNULL(r.is_rest, 0) = 0) AS training_day_count,
+          (SELECT COUNT(*) FROM ${TRAINING_ROUTINES_TABLE} r
+            WHERE r.program_id = p.id) AS day_count,
+          (SELECT MIN(r.scheduled_on) FROM ${TRAINING_ROUTINES_TABLE} r
+            WHERE r.program_id = p.id) AS first_date,
+          (SELECT MAX(r.scheduled_on) FROM ${TRAINING_ROUTINES_TABLE} r
+            WHERE r.program_id = p.id) AS last_date
+        FROM ${TRAINING_PROGRAMS_TABLE} p
+        WHERE p.user_id = ?
+        ORDER BY p.created_on DESC, p.id DESC
+      `,
       [athleteId]
     );
-    return routines;
+
+  const updateProgram = (programId, athleteId, body, actingUserId) => {
+    getProgramOrThrow(programId, athleteId);
+    const data = {};
+    if (body?.name !== undefined) {
+      data.name = String(body.name || "").trim() || "Training program";
+    }
+    if (body?.notes !== undefined) {
+      data.notes = String(body.notes || "").trim() || null;
+    }
+    if (body?.progression_summary !== undefined) {
+      data.progression_summary = String(body.progression_summary || "").trim() || null;
+    }
+    if (Object.keys(data).length === 0) {
+      return getProgramOrThrow(programId, athleteId);
+    }
+    updateAuditedRow(
+      TRAINING_PROGRAMS_TABLE,
+      data,
+      "id = ? AND user_id = ?",
+      [programId, athleteId],
+      actingUserId
+    );
+    return getProgramOrThrow(programId, athleteId);
+  };
+
+  const deleteProgram = (programId, athleteId, actingUserId) => {
+    const program = getProgramOrThrow(programId, athleteId);
+    for (const day of program.days) {
+      if (day.calendar_event_id && CALENDAR_EVENTS_TABLE) {
+        try {
+          archiveAndDeleteRowsInternal(
+            CALENDAR_EVENTS_TABLE,
+            "id = ?",
+            [day.calendar_event_id],
+            actingUserId
+          );
+        } catch {
+          // calendar row may already be gone
+        }
+      }
+      run(`DELETE FROM ${TRAINING_ROUTINE_EXERCISES_TABLE} WHERE routine_id = ?`, [day.id]);
+      archiveAndDeleteRowsInternal(
+        TRAINING_ROUTINES_TABLE,
+        "id = ? AND user_id = ?",
+        [day.id, athleteId],
+        actingUserId
+      );
+    }
+    archiveAndDeleteRowsInternal(
+      TRAINING_PROGRAMS_TABLE,
+      "id = ? AND user_id = ?",
+      [programId, athleteId],
+      actingUserId
+    );
+  };
+
+  const getTodaySession = (athleteId, dateStr = localDateString()) => {
+    const scheduledOn = String(dateStr || localDateString()).slice(0, 10);
+    const rows = all(
+      `
+        SELECT r.*,
+          p.name AS program_name,
+          (SELECT COUNT(*) FROM ${TRAINING_ROUTINE_EXERCISES_TABLE} re WHERE re.routine_id = r.id) AS exercise_count
+        FROM ${TRAINING_ROUTINES_TABLE} r
+        LEFT JOIN ${TRAINING_PROGRAMS_TABLE} p ON p.id = r.program_id
+        WHERE r.user_id = ?
+          AND r.scheduled_on = ?
+        ORDER BY IFNULL(r.is_rest, 0) ASC, r.id ASC
+      `,
+      [athleteId, scheduledOn]
+    );
+    if (!rows.length) {
+      return { date: scheduledOn, sessions: [] };
+    }
+    return {
+      date: scheduledOn,
+      sessions: rows.map((row) => ({
+        ...row,
+        exercises: row.is_rest ? [] : getRoutineExercises(row.id),
+      })),
+    };
+  };
+
+  const createCalendarTrainingEvent = (athleteId, actingUserId, { title, scheduledOn, notes }) => {
+    if (!CALENDAR_EVENTS_TABLE) return null;
+    try {
+      const result = insertAuditedRow(
+        CALENDAR_EVENTS_TABLE,
+        {
+          title: String(title || "Training").slice(0, 160),
+          assignee_user_id: athleteId,
+          start_at: `${scheduledOn}T17:00:00`,
+          end_at: `${scheduledOn}T18:30:00`,
+          notes: notes || null,
+          color: "#29d7ff",
+          all_day: 0,
+          recurrence: null,
+          recurrence_until: null,
+        },
+        actingUserId
+      );
+      return result.lastID;
+    } catch {
+      return null;
+    }
+  };
+
+  const moveCalendarTrainingEvent = (eventId, scheduledOn, actingUserId) => {
+    if (!CALENDAR_EVENTS_TABLE || !eventId || !scheduledOn) return;
+    try {
+      updateAuditedRow(
+        CALENDAR_EVENTS_TABLE,
+        {
+          start_at: `${scheduledOn}T17:00:00`,
+          end_at: `${scheduledOn}T18:30:00`,
+        },
+        "id = ?",
+        [eventId],
+        actingUserId
+      );
+    } catch {
+      // event may have been deleted in Calendar
+    }
+  };
+
+  const diffLocalDays = (fromDate, toDate) => {
+    const a = Date.UTC(fromDate.getFullYear(), fromDate.getMonth(), fromDate.getDate());
+    const b = Date.UTC(toDate.getFullYear(), toDate.getMonth(), toDate.getDate());
+    return Math.round((b - a) / 86400000);
+  };
+
+  /**
+   * Move one program day to a new date and shift every later day by the same delta.
+   * Days before the anchor keep their dates.
+   */
+  const rescheduleProgramDay = (routineId, athleteId, body, actingUserId) => {
+    const anchor = getRoutineOrThrow(routineId, athleteId);
+    if (!anchor.program_id) {
+      throw new Error("Only days inside a program can cascade-reschedule.");
+    }
+    const newDateStr = String(body?.scheduled_on || "").trim();
+    const newDate = parseLocalDate(newDateStr);
+    if (!newDate) {
+      throw new Error("A valid date (YYYY-MM-DD) is required.");
+    }
+    if (!anchor.scheduled_on) {
+      throw new Error("This day has no schedule date to adjust from.");
+    }
+    const oldDate = parseLocalDate(anchor.scheduled_on);
+    if (!oldDate) {
+      throw new Error("This day has an invalid schedule date.");
+    }
+
+    const deltaDays = diffLocalDays(oldDate, newDate);
+    if (deltaDays === 0) {
+      return getProgramOrThrow(anchor.program_id, athleteId);
+    }
+
+    const programDays = listRoutines(athleteId, { programId: anchor.program_id });
+    const anchorIndex = programDays.findIndex((day) => day.id === anchor.id);
+    if (anchorIndex < 0) {
+      throw new Error("Program day not found.");
+    }
+
+    const shiftFollowing = body?.shift_following !== false;
+    const targets = shiftFollowing ? programDays.slice(anchorIndex) : [programDays[anchorIndex]];
+
+    for (const day of targets) {
+      if (!day.scheduled_on) continue;
+      const current = parseLocalDate(day.scheduled_on);
+      if (!current) continue;
+      const next = addDays(current, deltaDays);
+      const nextStr = localDateString(next);
+      const nextLabel = weekdayLabel(next);
+      const nextName = String(day.name || "")
+        .replace(day.scheduled_on, nextStr)
+        .replace(new RegExp(`\\b${day.day_label}\\b`), nextLabel);
+
+      updateAuditedRow(
+        TRAINING_ROUTINES_TABLE,
+        {
+          scheduled_on: nextStr,
+          day_label: nextLabel,
+          name: nextName.slice(0, 120) || day.name,
+        },
+        "id = ? AND user_id = ?",
+        [day.id, athleteId],
+        actingUserId
+      );
+
+      if (day.calendar_event_id) {
+        moveCalendarTrainingEvent(day.calendar_event_id, nextStr, actingUserId);
+      }
+    }
+
+    // Keep program start_date aligned with the earliest scheduled day.
+    const refreshed = listRoutines(athleteId, { programId: anchor.program_id });
+    const firstDated = refreshed.find((day) => day.scheduled_on);
+    if (firstDated?.scheduled_on) {
+      updateAuditedRow(
+        TRAINING_PROGRAMS_TABLE,
+        { start_date: firstDated.scheduled_on },
+        "id = ? AND user_id = ?",
+        [anchor.program_id, athleteId],
+        actingUserId
+      );
+    }
+
+    return getProgramOrThrow(anchor.program_id, athleteId);
   };
 
   const replaceRoutineExercises = (routineId, exercises, actingUserId) => {
@@ -709,6 +1049,10 @@ export function installTrainingApi(deps) {
       body?.plan_day === null || body?.plan_day === undefined || body?.plan_day === ""
         ? null
         : Number(body.plan_day);
+    const programId =
+      body?.program_id === null || body?.program_id === undefined || body?.program_id === ""
+        ? null
+        : Number(body.program_id);
     const result = insertAuditedRow(
       TRAINING_ROUTINES_TABLE,
       {
@@ -717,10 +1061,22 @@ export function installTrainingApi(deps) {
         notes: String(body?.notes || "").trim() || null,
         plan_week: Number.isFinite(planWeek) ? planWeek : null,
         plan_day: Number.isFinite(planDay) ? planDay : null,
+        program_id: Number.isFinite(programId) ? programId : null,
+        scheduled_on: String(body?.scheduled_on || "").trim() || null,
+        session_name: String(body?.session_name || "").trim() || null,
+        day_label: String(body?.day_label || "").trim() || null,
+        is_rest: body?.is_rest ? 1 : 0,
+        progression_notes: String(body?.progression_notes || "").trim() || null,
+        calendar_event_id:
+          body?.calendar_event_id != null && body?.calendar_event_id !== ""
+            ? Number(body.calendar_event_id)
+            : null,
       },
       actingUserId
     );
-    replaceRoutineExercises(result.lastID, body?.exercises, actingUserId);
+    if (!body?.is_rest) {
+      replaceRoutineExercises(result.lastID, body?.exercises, actingUserId);
+    }
     return getRoutineOrThrow(result.lastID, athleteId);
   };
 
@@ -731,6 +1087,26 @@ export function installTrainingApi(deps) {
     };
     if (body?.notes !== undefined) {
       data.notes = String(body.notes || "").trim() || null;
+    }
+    if (body?.plan_week !== undefined) {
+      data.plan_week =
+        body.plan_week === null || body.plan_week === "" ? null : Number(body.plan_week);
+    }
+    if (body?.plan_day !== undefined) {
+      data.plan_day =
+        body.plan_day === null || body.plan_day === "" ? null : Number(body.plan_day);
+    }
+    if (body?.session_name !== undefined) {
+      data.session_name = String(body.session_name || "").trim() || null;
+    }
+    if (body?.day_label !== undefined) {
+      data.day_label = String(body.day_label || "").trim() || null;
+    }
+    if (body?.progression_notes !== undefined) {
+      data.progression_notes = String(body.progression_notes || "").trim() || null;
+    }
+    if (body?.scheduled_on !== undefined) {
+      data.scheduled_on = String(body.scheduled_on || "").trim() || null;
     }
     updateAuditedRow(
       TRAINING_ROUTINES_TABLE,
@@ -1616,6 +1992,21 @@ export function installTrainingApi(deps) {
     return getWorkoutOrThrow(workoutId, athleteId);
   };
 
+  const inferDaysPerWeek = (goals, bodyValue) => {
+    const explicit = Number(bodyValue);
+    if (Number.isFinite(explicit) && explicit >= 2 && explicit <= 7) return explicit;
+    const blob = goals.join(" ").toLowerCase();
+    const match = blob.match(/(\d)\s*(?:x|×|-)?\s*(?:day|days)\s*(?:a|per)?\s*week/);
+    if (match) {
+      const n = Number(match[1]);
+      if (n >= 2 && n <= 7) return n;
+    }
+    if (/\b5\s*day/.test(blob)) return 5;
+    if (/\b3\s*day/.test(blob)) return 3;
+    if (/\b6\s*day/.test(blob)) return 6;
+    return 4;
+  };
+
   const generateAiRoutine = async (athleteId, body, actingUserId) => {
     if (typeof callGeminiJson !== "function") {
       throw new Error("AI is not available on this server.");
@@ -1626,34 +2017,58 @@ export function installTrainingApi(deps) {
     }
     saveAiGoals(athleteId, { goals }, actingUserId);
 
+    const daysPerWeek = inferDaysPerWeek(goals, body?.days_per_week);
+    const weekCountRaw = Number(body?.week_count);
+    const weekCount = Number.isFinite(weekCountRaw) && weekCountRaw >= 4 && weekCountRaw <= 8
+      ? weekCountRaw
+      : 6;
+    const startDate =
+      parseLocalDate(body?.start_date) || parseLocalDate(localDateString()) || new Date();
+    const startDateStr = localDateString(startDate);
+
     const library = buildLibraryCatalog(athleteId);
     const history = buildHistoryContext(athleteId);
     const prompt = [
-      "You are a strength & conditioning coach for a personal training app.",
-      "Create a FULL multi-week WORKOUT PLAN (not a single session).",
-      "Duration: 5 or 6 weeks. Each week must list every day (Mon–Sun or Day 1–7).",
-      "Mark rest / recovery days with is_rest=true and an empty exercises array.",
-      "Training days: 3–6 sessions per week with clear focuses (e.g. Push, Pull, Legs, Full body, Conditioning, Striking, Grappling).",
-      "Progress week to week (volume, intensity, or duration). Use ONLY exercise names from the library.",
-      "If goals mention fighting shape, boxing, kickboxing, MMA, martial arts, or combat sports, include Martial arts / striking / grappling drills and mobility from the library when appropriate (mixed with strength/conditioning).",
-      "Do not force martial arts into unrelated goals; only use them when they fit.",
-      "Consider recent workout history and PRs; do not overuse lifts they just hammered.",
-      "For Cardio (including Shadow Boxing / bag / pad rounds) use target_sets as rounds and target_duration_mins as minutes per round.",
-      "For Martial arts skill drills (combos, kicks, footwork) and strength exercises use target_sets and target_reps; target_weight optional.",
-      "For Mobility stretches use short target_sets with target_reps (holds counted as reps) unless timed Cardio holds fit better.",
+      "You are an elite personal exercise coach and periodization specialist.",
+      "Build ONE cohesive named PROGRAM that drives the athlete toward their three goals.",
+      "This is not a random list of workouts — design progressive overload, recovery, and goal-specific emphasis.",
+      "",
+      `Program length: exactly ${weekCount} weeks.`,
+      `Training frequency: exactly ${daysPerWeek} hard training sessions per week (plus rest days).`,
+      `Calendar start: ${startDateStr} (${weekdayLabel(startDate)}). The app will assign real calendar dates starting today — do NOT invent dates.`,
+      "For each week return exactly the training sessions for that week (no rest-day objects) as an ordered array of length = days_per_week.",
+      "Each session needs a clear focus (Push, Pull, Legs, Upper, Lower, Full body, Conditioning, Skill, etc.).",
+      "",
+      "PROGRESSIONS (required):",
+      "- Week-to-week: increase load, reps, sets, or density toward the goals.",
+      "- Put concrete progression cues in week.focus, week.progression, session.progression_notes, and exercise.notes.",
+      "- Example cues: '+5 lb if all sets hit target', 'add 1 set', 'shave 15s rest', 'extend rounds by 30s'.",
+      "- Use recent PRs / history to set realistic target_weight when known; otherwise leave target_weight null and prescribe RPE/effort in notes.",
+      "",
+      "Exercise rules:",
+      "- Use ONLY exercise names from the library JSON.",
+      "- 4–10 exercises per training day; warm-up / mobility allowed.",
+      "- If goals mention fighting, boxing, kickboxing, MMA, or martial arts, include striking/grappling/mobility from the library.",
+      "- Otherwise do not force martial arts work.",
+      "- Cardio / shadow boxing / bag: target_sets = rounds, target_duration_mins = minutes per round.",
+      "- Strength / skill: target_sets + target_reps; target_weight optional.",
+      "",
       "Return ONLY JSON:",
       "{",
-      '  "name": string (plan title),',
-      '  "notes": string (how to run the plan),',
+      '  "name": string (short program title),',
+      '  "notes": string (coach overview: how this plan hits the goals),',
+      '  "progression_summary": string (how the block progresses week to week),',
+      '  "days_per_week": number,',
       '  "weeks": [',
       "    {",
       '      "week": number,',
       '      "focus": string,',
-      '      "days": [',
+      '      "progression": string,',
+      '      "sessions": [',
       "        {",
-      '          "day_label": string (e.g. Mon or Day 1),',
       '          "session_name": string,',
-      '          "is_rest": boolean,',
+      '          "focus": string,',
+      '          "progression_notes": string,',
       '          "exercises": [',
       "            {",
       '              "name": string,',
@@ -1670,7 +2085,6 @@ export function installTrainingApi(deps) {
       "    }",
       "  ]",
       "}",
-      "Keep each training day to about 4–10 exercises.",
       "",
       `Goals:\n1) ${goals[0]}\n2) ${goals[1]}\n3) ${goals[2]}`,
       "",
@@ -1683,7 +2097,7 @@ export function installTrainingApi(deps) {
     try {
       parsed = await callGeminiJson({
         prompt,
-        temperature: 0.45,
+        temperature: 0.4,
         emptyError: "Gemini returned an empty plan response.",
         parseError: "Could not parse workout plan JSON from Gemini.",
       });
@@ -1697,122 +2111,236 @@ export function installTrainingApi(deps) {
     }
 
     const weeksRaw = Array.isArray(parsed?.weeks) ? parsed.weeks : [];
-    if (weeksRaw.length < 5) {
-      throw new Error("AI did not return a 5–6 week plan. Try generating again.");
+    if (weeksRaw.length < Math.min(4, weekCount)) {
+      throw new Error("AI did not return a full multi-week program. Try generating again.");
     }
 
     const shortGoal = goals[0].slice(0, 36);
     const planName =
       String(parsed?.name || "").trim() ||
-      `AI Plan: ${shortGoal}${shortGoal.length >= 36 ? "…" : ""}`;
+      `Coach Plan: ${shortGoal}${shortGoal.length >= 36 ? "…" : ""}`;
+    const progressionSummary =
+      String(parsed?.progression_summary || "").trim() ||
+      "Progress load or volume each week when targets are hit; deload technique on poor recovery days.";
     const planNotes = [
       String(parsed?.notes || "").trim(),
       `Goals: ${goals.join(" · ")}`,
-      `${Math.min(weeksRaw.length, 6)}-week day-by-day plan generated by AI Coach.`,
+      `Starts ${startDateStr} · ${daysPerWeek} days/week · ${weekCount}-week block`,
+      `Progression: ${progressionSummary}`,
     ]
       .filter(Boolean)
       .join("\n");
+
+    const programInsert = insertAuditedRow(
+      TRAINING_PROGRAMS_TABLE,
+      {
+        user_id: athleteId,
+        name: planName.slice(0, 120),
+        notes: planNotes,
+        goals_json: JSON.stringify(goals),
+        start_date: startDateStr,
+        days_per_week: daysPerWeek,
+        week_count: weekCount,
+        progression_summary: progressionSummary,
+      },
+      actingUserId
+    );
+    const programId = programInsert.lastID;
+
+    const schedule = buildScheduleDates(startDate, daysPerWeek, weekCount);
+    const sessionsByWeek = new Map();
+    for (const weekEntry of weeksRaw.slice(0, weekCount)) {
+      const weekNumber = Number(weekEntry?.week) || sessionsByWeek.size + 1;
+      const sessions = Array.isArray(weekEntry?.sessions)
+        ? weekEntry.sessions
+        : Array.isArray(weekEntry?.days)
+          ? weekEntry.days.filter((d) => !d?.is_rest)
+          : [];
+      sessionsByWeek.set(weekNumber, {
+        focus: String(weekEntry?.focus || "").trim() || `Week ${weekNumber}`,
+        progression: String(weekEntry?.progression || "").trim(),
+        sessions,
+      });
+    }
 
     const weeks = [];
     const routines = [];
     const allSkipped = new Set();
     let trainingDayCount = 0;
+    const sessionCursor = new Map(); // week -> index into sessions
 
-    for (const weekEntry of weeksRaw.slice(0, 6)) {
-      const weekNumber = Number(weekEntry?.week) || weeks.length + 1;
-      const weekFocus = String(weekEntry?.focus || "").trim() || `Week ${weekNumber}`;
-      const daysOut = [];
-      const days = Array.isArray(weekEntry?.days) ? weekEntry.days : [];
-      let dayIndex = 0;
+    for (const slot of schedule) {
+      const weekMeta = sessionsByWeek.get(slot.plan_week) || {
+        focus: `Week ${slot.plan_week}`,
+        progression: "",
+        sessions: [],
+      };
+      if (!weeks.find((w) => w.week === slot.plan_week)) {
+        weeks.push({
+          week: slot.plan_week,
+          focus: weekMeta.focus,
+          progression: weekMeta.progression,
+          days: [],
+        });
+      }
+      const weekOut = weeks.find((w) => w.week === slot.plan_week);
 
-      for (const dayEntry of days) {
-        dayIndex += 1;
-        const dayLabel = String(dayEntry?.day_label || "").trim() || "Day";
-        const sessionName =
-          String(dayEntry?.session_name || "").trim() || dayLabel;
-        const isRest = Boolean(dayEntry?.is_rest) || !Array.isArray(dayEntry?.exercises) || dayEntry.exercises.length === 0;
-
-        if (isRest) {
-          daysOut.push({
-            day_label: dayLabel,
-            session_name: sessionName || "Rest",
-            is_rest: true,
-            routine_id: null,
-            exercise_count: 0,
-          });
-          continue;
-        }
-
-        const { plan, skipped } = mapAiExercisesToPlan(library, dayEntry.exercises);
-        skipped.forEach((name) => allSkipped.add(name));
-        if (plan.length < 2) {
-          daysOut.push({
-            day_label: dayLabel,
-            session_name: sessionName,
-            is_rest: true,
-            routine_id: null,
-            exercise_count: 0,
-            note: "Marked rest — too few mappable exercises.",
-          });
-          continue;
-        }
-
-        const routineName = `${planName} · W${weekNumber} · ${dayLabel} · ${sessionName}`.slice(
-          0,
-          120
-        );
-        const routine = createRoutine(
+      if (!slot.is_training_slot) {
+        const restName = `${planName} · ${slot.scheduled_on} · Rest`.slice(0, 120);
+        const rest = createRoutine(
           athleteId,
           {
-            name: routineName,
-            notes: [
-              planNotes,
-              `Week ${weekNumber} focus: ${weekFocus}`,
-              `Day: ${dayLabel} — ${sessionName}`,
-            ].join("\n"),
-            plan_week: weekNumber,
-            plan_day: dayIndex,
-            exercises: plan,
+            name: restName,
+            notes: [`Program: ${planName}`, `Rest / recovery — ${slot.day_label}`].join("\n"),
+            plan_week: slot.plan_week,
+            plan_day: slot.plan_day,
+            program_id: programId,
+            scheduled_on: slot.scheduled_on,
+            session_name: "Rest",
+            day_label: slot.day_label,
+            is_rest: true,
+            progression_notes: "Recover, mobility as needed, sleep and protein on point.",
+            exercises: [],
           },
           actingUserId
         );
-        trainingDayCount += 1;
-        routines.push(routine);
-        daysOut.push({
-          day_label: dayLabel,
-          session_name: sessionName,
-          is_rest: false,
-          routine_id: routine.id,
-          routine_name: routine.name,
-          exercise_count: plan.length,
+        routines.push(rest);
+        weekOut.days.push({
+          scheduled_on: slot.scheduled_on,
+          day_label: slot.day_label,
+          session_name: "Rest",
+          is_rest: true,
+          routine_id: rest.id,
+          exercise_count: 0,
         });
+        continue;
       }
 
-      weeks.push({
-        week: weekNumber,
-        focus: weekFocus,
-        days: daysOut,
+      const cursor = sessionCursor.get(slot.plan_week) || 0;
+      sessionCursor.set(slot.plan_week, cursor + 1);
+      const sessionEntry = weekMeta.sessions[cursor] || weekMeta.sessions[0] || null;
+      const sessionName =
+        String(sessionEntry?.session_name || sessionEntry?.focus || "").trim() ||
+        `Session ${cursor + 1}`;
+      const progressionNotes = [
+        String(sessionEntry?.progression_notes || "").trim(),
+        weekMeta.progression ? `Week focus: ${weekMeta.progression}` : "",
+      ]
+        .filter(Boolean)
+        .join(" ");
+
+      const { plan, skipped } = mapAiExercisesToPlan(library, sessionEntry?.exercises);
+      skipped.forEach((name) => allSkipped.add(name));
+
+      if (plan.length < 2) {
+        const fallbackRest = createRoutine(
+          athleteId,
+          {
+            name: `${planName} · ${slot.scheduled_on} · Recovery`.slice(0, 120),
+            notes: "Auto rest — AI session could not map enough library exercises.",
+            plan_week: slot.plan_week,
+            plan_day: slot.plan_day,
+            program_id: programId,
+            scheduled_on: slot.scheduled_on,
+            session_name: "Recovery",
+            day_label: slot.day_label,
+            is_rest: true,
+            exercises: [],
+          },
+          actingUserId
+        );
+        routines.push(fallbackRest);
+        weekOut.days.push({
+          scheduled_on: slot.scheduled_on,
+          day_label: slot.day_label,
+          session_name: "Recovery",
+          is_rest: true,
+          routine_id: fallbackRest.id,
+          exercise_count: 0,
+        });
+        continue;
+      }
+
+      const eventTitle = `Training: ${sessionName}`;
+      const calendarEventId = createCalendarTrainingEvent(athleteId, actingUserId, {
+        title: eventTitle,
+        scheduledOn: slot.scheduled_on,
+        notes: [
+          `Program: ${planName}`,
+          `Week ${slot.plan_week} · ${sessionName}`,
+          progressionNotes,
+          `Open Training → Programs to preview or start.`,
+        ]
+          .filter(Boolean)
+          .join("\n"),
+      });
+
+      const routineName = `${planName} · ${slot.scheduled_on} · ${sessionName}`.slice(0, 120);
+      const routine = createRoutine(
+        athleteId,
+        {
+          name: routineName,
+          notes: [
+            planNotes,
+            `Week ${slot.plan_week} focus: ${weekMeta.focus}`,
+            `${slot.day_label} ${slot.scheduled_on} — ${sessionName}`,
+            progressionNotes,
+          ]
+            .filter(Boolean)
+            .join("\n"),
+          plan_week: slot.plan_week,
+          plan_day: slot.plan_day,
+          program_id: programId,
+          scheduled_on: slot.scheduled_on,
+          session_name: sessionName,
+          day_label: slot.day_label,
+          is_rest: false,
+          progression_notes: progressionNotes || null,
+          calendar_event_id: calendarEventId,
+          exercises: plan,
+        },
+        actingUserId
+      );
+      trainingDayCount += 1;
+      routines.push(routine);
+      weekOut.days.push({
+        scheduled_on: slot.scheduled_on,
+        day_label: slot.day_label,
+        session_name: sessionName,
+        is_rest: false,
+        routine_id: routine.id,
+        routine_name: routine.name,
+        exercise_count: plan.length,
+        progression_notes: progressionNotes || null,
+        calendar_event_id: calendarEventId,
       });
     }
 
-    if (trainingDayCount < 8) {
+    if (trainingDayCount < daysPerWeek * 2) {
       throw new Error(
         `Plan only mapped ${trainingDayCount} training days. Try generating again with clearer goals.`
       );
     }
 
+    const program = getProgramOrThrow(programId, athleteId);
+
     return {
+      program,
       plan: {
+        id: programId,
         name: planName,
         notes: planNotes,
-        week_count: weeks.length,
+        progression_summary: progressionSummary,
+        start_date: startDateStr,
+        days_per_week: daysPerWeek,
+        week_count: weekCount,
         training_day_count: trainingDayCount,
+        calendar_events_created: routines.filter((r) => r.calendar_event_id).length,
         weeks,
       },
       routines,
       skipped: [...allSkipped],
-      // Back-compat for older clients expecting a single routine.
-      routine: routines[0] || null,
+      routine: routines.find((r) => !r.is_rest) || routines[0] || null,
     };
   };
 
@@ -2087,9 +2615,57 @@ export function installTrainingApi(deps) {
         return true;
       }
 
+      if (req.method === "GET" && path === "/api/training/programs") {
+        const athleteId = athleteFromQuery(url, actingUser);
+        json(res, 200, { programs: listPrograms(athleteId), athlete_user_id: athleteId });
+        return true;
+      }
+
+      if (req.method === "GET" && path === "/api/training/today") {
+        const athleteId = athleteFromQuery(url, actingUser);
+        const date = url.searchParams.get("date") || localDateString();
+        json(res, 200, {
+          ...getTodaySession(athleteId, date),
+          athlete_user_id: athleteId,
+        });
+        return true;
+      }
+
+      const programMatch = path.match(/^\/api\/training\/programs\/(\d+)$/);
+      if (programMatch) {
+        const programId = Number(programMatch[1]);
+        if (req.method === "GET") {
+          const athleteId = athleteFromQuery(url, actingUser);
+          json(res, 200, {
+            program: getProgramOrThrow(programId, athleteId),
+            athlete_user_id: athleteId,
+          });
+          return true;
+        }
+        if (req.method === "PUT") {
+          const body = await readBody(req);
+          const athleteId = athleteFromBody(body, actingUser);
+          json(res, 200, {
+            program: updateProgram(programId, athleteId, body, actingUser.id),
+            athlete_user_id: athleteId,
+          });
+          return true;
+        }
+        if (req.method === "DELETE") {
+          const athleteId = athleteFromQuery(url, actingUser);
+          deleteProgram(programId, athleteId, actingUser.id);
+          json(res, 200, { ok: true });
+          return true;
+        }
+      }
+
       if (req.method === "GET" && path === "/api/training/routines") {
         const athleteId = athleteFromQuery(url, actingUser);
-        json(res, 200, { routines: listRoutines(athleteId), athlete_user_id: athleteId });
+        const programId = url.searchParams.get("program_id");
+        json(res, 200, {
+          routines: listRoutines(athleteId, { programId }),
+          athlete_user_id: athleteId,
+        });
         return true;
       }
 
@@ -2097,6 +2673,22 @@ export function installTrainingApi(deps) {
         const body = await readBody(req);
         const athleteId = athleteFromBody(body, actingUser);
         json(res, 200, { routine: createRoutine(athleteId, body, actingUser.id) });
+        return true;
+      }
+
+      const routineReschedule = path.match(/^\/api\/training\/routines\/(\d+)\/reschedule$/);
+      if (req.method === "POST" && routineReschedule) {
+        const body = await readBody(req);
+        const athleteId = athleteFromBody(body, actingUser);
+        json(res, 200, {
+          program: rescheduleProgramDay(
+            Number(routineReschedule[1]),
+            athleteId,
+            body,
+            actingUser.id
+          ),
+          athlete_user_id: athleteId,
+        });
         return true;
       }
 

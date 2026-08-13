@@ -914,7 +914,7 @@ const DOC_APPS = {
         sections: [
           section("What you can do", [
             "Start a workout empty or from a routine.",
-            "Use AI Coach to turn three goals into a 5–6 week day-by-day plan (or start a Daily HIIT).",
+            "Use AI Coach to turn three goals into a dated progressive program (or start a Daily HIIT).",
             "Log strength sets with weight, reps, optional RPE, and warmup flags.",
             "Log Cardio exercises with minutes and optional distance (intervals instead of sets).",
             "Use rest timer, supersets, and previous-session values while logging.",
@@ -943,12 +943,13 @@ const DOC_APPS = {
       },
       coach: {
         title: "AI Coach",
-        summary: "Gemini-powered multi-week plans and daily HIIT from your goals and history.",
+        summary: "Goal-driven progressive programs with calendar dates, plus daily HIIT.",
         sections: [
-          section("Goals & plans", [
-            "Enter three training goals and save them (stored per athlete).",
-            "Generate 5–6 week plan builds a day-by-day block (training + rest days) and saves each training day as its own routine.",
-            "You can regenerate anytime — each run creates a new set of routines.",
+          section("Goals & programs", [
+            "Enter three training goals and choose days/week and block length.",
+            "Generate coached program builds one named program starting today, with progressions toward your goals.",
+            "Training days are scheduled on the calendar; rest days fill out each week window.",
+            "Open the program to preview any day’s exercises without starting a workout.",
             "AI only picks exercises from your library and factors in recent workouts and PRs.",
           ]),
           section("Daily HIIT", [
@@ -962,7 +963,7 @@ const DOC_APPS = {
       },
       routines: {
         title: "Routines",
-        summary: "Reusable templates with target sets/reps/weight or cardio minutes.",
+        summary: "Named programs (dated) and standalone templates with target sets/reps/weight.",
         sections: [
           section("Tips", [
             "Add exercises from the library.",
@@ -1052,6 +1053,66 @@ const DOC_APPS = {
     },
   },
 
+  home_inventory: {
+    label: "Home Inventory",
+    description: "Track food and household items by freezer and fridge location.",
+    topics: {
+      overview: {
+        title: "Home Inventory overview",
+        summary: "Mobile-friendly inventory for chest/upright freezers and fridge freezers.",
+        sections: [
+          section("What you can do", [
+            "Browse storage locations (Chest Freezer, Upright Freezer, Fridge Freezer downstairs/upstairs).",
+            "Add items with a name, description, quantity, optional unit, and photo.",
+            "Filter by location, search across items, and tap +/− to adjust quantity quickly.",
+            "Tap Dinner on an item to add it to tonight’s Calendar “Dinner” event (creates or appends the item list).",
+            "Manage locations (add, rename, delete) from the inventory screen.",
+          ]),
+          section("Access", [
+            "Grant the Home Inventory user role under Administration → Users.",
+            "Users with only that role see Home Inventory in the left nav (and home apps list).",
+            "System Admin has full access.",
+          ]),
+        ],
+      },
+    },
+  },
+
+  troublehub: {
+    label: "TroubleHub",
+    description: "Locked vault of private games. System admins do not get access by default.",
+    topics: {
+      overview: {
+        title: "TroubleHub overview",
+        summary: "Explicit vault with session elevation and Match Mischief as the first game.",
+        sections: [
+          section("Security model", [
+            "System Admin does not unlock TroubleHub automatically.",
+            "Open Administration → TroubleHub Vault and re-enter your password to elevate for this login only.",
+            "While elevated, grant or revoke TroubleHub player access. Elevation clears on sign-out / next login.",
+            "Players need the troublehub_user role; it is not assigned from the normal Users checkboxes.",
+          ]),
+          section("Match Mischief", [
+            "Play one card at a time: Yes/No/Maybe, heat rating (Ice Cold → Burning Hot), wildest-dream flag, and notes.",
+            "Use Search on Match Mischief to jump to a card by idea, question, statement, or description.",
+            "Try a card: filter by category and your Yes/No/Maybe, heat, and wildest-dream answers, then draw a random card.",
+            "Save & continue through the deck; go Back anytime to edit earlier answers.",
+            "Any player can add a custom card; others get a notification on their user menu with a link to play.",
+            "Elevated TroubleHub Admins can import baseline JSON, edit cards (text + image), and reset all answers.",
+            "Compare answers with another player. Match % uses Yes/No/Maybe + heat closeness; wildest dreams are a filter for fantasies to act on.",
+          ]),
+          section("Fantasies", [
+            "Create a session code (pick Male or Female), share it, and your partner joins with that code on their PC.",
+            "Live sync uses short polling — websockets are not required for this turn-based game.",
+            "Cards are text-only with a required title, Male/Female audience, and Romantic / Naughty / Kinky.",
+            "Each partner picks at least 12 cards, locks, then draws 2+2 and chooses with optional notes.",
+            "Elevated admins can Load starter deck (OOB sample) or import custom JSON.",
+          ]),
+        ],
+      },
+    },
+  },
+
   admin: {
     label: "Administration",
     description: "Users, schema dictionary, navigation, deletes, logs, backup, zero boot, and SQL tools.",
@@ -1063,7 +1124,8 @@ const DOC_APPS = {
           section("Areas", [
             "Applications — register apps users can open.",
             "Tables & fields — dictionary labels and metadata for forms and lists.",
-            "Users — accounts, passwords, and roles.",
+            "Users — accounts, passwords, and roles (not TroubleHub).",
+            "TroubleHub Vault — elevate each login and grant explicit TroubleHub player access.",
             "Navigation — sidebar structure.",
             "Deleted records — restore soft-deleted rows.",
             "Error logs — inspect client and server errors.",
