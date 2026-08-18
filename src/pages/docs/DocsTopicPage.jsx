@@ -1,13 +1,20 @@
-import { Link, useParams } from "react-router-dom";
+import { Link, Navigate, useParams } from "react-router-dom";
 import DocContent from "../../components/docs/DocContent";
 import PageHeader from "../../components/PageHeader";
+import { useAuth } from "../../context/AuthContext";
 import { getDocApp, getDocTopicOrReport, getDocTopics } from "../../content/documentation";
+import { APP_USER_ROLES } from "../../utils/roles";
 
 function DocsTopicPage() {
   const { appName, topic } = useParams();
+  const { canAccessApp } = useAuth();
   const app = getDocApp(appName);
   const doc = getDocTopicOrReport(appName, topic);
   const topics = getDocTopics(appName);
+
+  if (APP_USER_ROLES[appName] && !canAccessApp(appName)) {
+    return <Navigate to="/access-denied" replace />;
+  }
 
   if (!app || !doc) {
     return (

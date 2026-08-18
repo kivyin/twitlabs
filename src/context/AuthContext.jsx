@@ -157,9 +157,21 @@ export function AuthProvider({ children }) {
     (appName) =>
       userHasAppAccess(user?.roles ?? [], appName, isAdmin, {
         troublehubAdminElevated: Boolean(user?.troublehub_admin_elevated),
+        enabledApps: user?.enabled_apps,
       }),
-    [user?.roles, user?.troublehub_admin_elevated, isAdmin]
+    [user?.roles, user?.troublehub_admin_elevated, user?.enabled_apps, isAdmin]
   );
+
+  const refreshUser = useCallback(async () => {
+    const payload = await getMe();
+    if (!payload?.user) return null;
+    if (payload.sessionIdleSeconds != null) {
+      applySessionIdleSeconds(payload.sessionIdleSeconds);
+    }
+    setIsLocalNetwork(Boolean(payload.isLocalNetwork));
+    setUser(payload.user);
+    return payload.user;
+  }, [applySessionIdleSeconds]);
 
   const setTroublehubAdminElevated = useCallback((elevated) => {
     setUser((current) =>
@@ -181,6 +193,7 @@ export function AuthProvider({ children }) {
       clearAuthMessage,
       isAdmin,
       canAccessApp,
+      refreshUser,
       setTroublehubAdminElevated,
     }),
     [
@@ -195,6 +208,7 @@ export function AuthProvider({ children }) {
       clearAuthMessage,
       isAdmin,
       canAccessApp,
+      refreshUser,
       setTroublehubAdminElevated,
     ]
   );

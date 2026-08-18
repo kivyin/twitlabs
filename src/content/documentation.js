@@ -1146,7 +1146,10 @@ const DOC_APPS = {
         sections: [
           section("How to use", [
             "Create an application with an internal name and display title.",
-            "Users only see apps their roles grant (or all apps if System Admin).",
+            "Users only see apps their roles grant (or all enabled apps if System Admin).",
+            "Uncheck Enabled to turn an app off globally: it disappears from the left nav, home, docs, and favorites, and nobody can open it even if they have the role.",
+            "Disabled apps stay listed here so you can turn them back on.",
+            "TroubleHub tables and content stay hidden unless the user has explicit TroubleHub access (not just System Admin).",
             "Click a row to edit; delete from the form when needed.",
           ]),
         ],
@@ -1154,6 +1157,11 @@ const DOC_APPS = {
           field("name", "Name", "Internal app key, e.g. budget. Used in URLs and roles."),
           field("title", "Title", "Display name on home cards and navigation."),
           field("description", "Description", "Short summary on the home card."),
+          field(
+            "is_enabled",
+            "Enabled",
+            "When off, the app is hidden everywhere and blocked even for users who have the role."
+          ),
         ],
       },
       tables: {

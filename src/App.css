@@ -5370,7 +5370,7 @@ input.money-negative {
   justify-content: space-between;
   gap: 1rem;
   flex-wrap: wrap;
-  margin: 0.85rem 0 1.25rem;
+  margin: 0.35rem 0 1rem;
   padding: 0.85rem 1rem;
   border: 1px solid var(--border);
   border-radius: 0.55rem;
@@ -5395,6 +5395,143 @@ input.money-negative {
   display: flex;
   gap: 0.5rem;
   flex-shrink: 0;
+}
+
+.ide-tabs {
+  display: flex;
+  gap: 0.4rem;
+  margin: 0.85rem 0 1.1rem;
+  padding: 0.3rem;
+  border: 1px solid var(--border-strong, var(--border));
+  border-radius: 12px;
+  background: var(--surface-muted, var(--surface-2));
+}
+
+.ide-tab {
+  flex: 1;
+  min-height: 2.5rem;
+  padding: 0.5rem 1rem;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--muted-text);
+  font-size: 0.95rem;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  cursor: pointer;
+}
+
+.ide-tab:hover {
+  color: var(--text);
+  background: color-mix(in srgb, var(--surface) 70%, transparent);
+}
+
+.ide-tab.active {
+  color: var(--brand-strong);
+  background: var(--surface);
+  border-color: color-mix(in srgb, var(--brand) 35%, var(--border));
+  box-shadow: var(--shadow-sm, 0 1px 3px rgba(15, 23, 42, 0.12));
+}
+
+.ide-tab-panel {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.ide-mode-toggle {
+  display: inline-flex;
+  align-items: stretch;
+  gap: 0.25rem;
+  width: fit-content;
+  padding: 0.25rem;
+  border: 1px solid var(--border-strong, var(--border));
+  border-radius: 10px;
+  background: var(--surface-muted, var(--surface-2));
+}
+
+.ide-mode-toggle-button {
+  min-height: 2.15rem;
+  padding: 0.35rem 0.95rem;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted-text);
+  font-size: 0.85rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.ide-mode-toggle-button:hover {
+  color: var(--text);
+}
+
+.ide-mode-toggle-button.active {
+  background: var(--surface);
+  color: var(--brand-strong);
+  border-color: color-mix(in srgb, var(--brand) 35%, var(--border));
+  box-shadow: var(--shadow-sm, 0 1px 3px rgba(15, 23, 42, 0.1));
+}
+
+.ide-sql-form,
+.ide-upload-form {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.ide-sql-result {
+  display: grid;
+  gap: 0.65rem;
+  margin-top: 0.85rem;
+}
+
+.ide-sql-result-toolbar {
+  display: inline-flex;
+  gap: 0.25rem;
+  padding: 0.25rem;
+  border: 1px solid var(--border-strong, var(--border));
+  border-radius: 10px;
+  background: var(--surface-muted, var(--surface-2));
+}
+
+.ide-sql-result-tab {
+  min-height: 2.05rem;
+  padding: 0.3rem 0.85rem;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted-text);
+  font-size: 0.8rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.ide-sql-result-tab:hover {
+  color: var(--text);
+}
+
+.ide-sql-result-tab.active {
+  background: var(--surface);
+  border-color: color-mix(in srgb, var(--brand) 35%, var(--border));
+  color: var(--brand-strong);
+  box-shadow: var(--shadow-sm, 0 1px 3px rgba(15, 23, 42, 0.1));
+}
+
+.ide-sql-json-output,
+.ide-sql-statement-output {
+  margin: 0;
+  max-height: 28rem;
+  overflow: auto;
+  padding: 0.85rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm, 8px);
+  background: var(--code-bg);
+  color: var(--code-text);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.ide-sql-statement-output {
+  font-weight: 600;
 }
 
 .related-records-actions {

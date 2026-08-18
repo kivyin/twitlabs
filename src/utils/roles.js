@@ -70,6 +70,10 @@ export function isSystemAdminRole(roles = []) {
  * Pass `troublehubAdminElevated` for session elevation access.
  */
 export function userHasAppAccess(roles = [], appName, isAdmin = false, options = {}) {
+  if (Array.isArray(options.enabledApps) && !options.enabledApps.includes(appName)) {
+    return false;
+  }
+
   const allowed = getAllowedAppRoles(appName);
   const hasExplicitRole =
     allowed.length > 0 &&
@@ -92,6 +96,27 @@ export function userHasAppAccess(roles = [], appName, isAdmin = false, options =
     return false;
   }
   return hasExplicitRole;
+}
+
+export function canSeeAppSchema(appName, canAccessApp) {
+  if (!appName) return true;
+  if (ADMIN_EXPLICIT_APPS.has(appName)) {
+    return Boolean(canAccessApp?.(appName));
+  }
+  return true;
+}
+
+export function appNameFromNavPath(path) {
+  const raw = String(path || "");
+  const appMatch = raw.match(/^\/app\/([^/?#]+)/);
+  if (appMatch) return decodeURIComponent(appMatch[1]);
+  if (raw === "/budget" || raw.startsWith("/budget/")) return "budget";
+  const docsMatch = raw.match(/^\/docs\/([^/?#]+)/);
+  if (docsMatch) {
+    const docApp = decodeURIComponent(docsMatch[1]);
+    if (APP_USER_ROLES[docApp]) return docApp;
+  }
+  return null;
 }
 
 export function userHasCalendarEditAccess(roles = [], isAdmin = false) {

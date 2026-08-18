@@ -1,9 +1,12 @@
 import { Link } from "react-router-dom";
 import PageHeader from "../../components/PageHeader";
+import { useAuth } from "../../context/AuthContext";
 import { getDocApps } from "../../content/documentation";
+import { APP_USER_ROLES } from "../../utils/roles";
 
 function DocsHomePage() {
-  const apps = getDocApps();
+  const { canAccessApp } = useAuth();
+  const apps = getDocApps().filter((app) => !APP_USER_ROLES[app.id] || canAccessApp(app.id));
 
   return (
     <>

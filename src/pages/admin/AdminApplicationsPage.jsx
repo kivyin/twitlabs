@@ -3,10 +3,16 @@ import { deleteRows, insertRow, updateRows } from "../../api/dbApi";
 import { getApplications } from "../../api/dictionaryApi";
 import ConfirmModal from "../../components/common/ConfirmModal";
 import DataTable from "../../components/DataTable";
+import { useAuth } from "../../context/AuthContext";
 
-const EMPTY_FORM = { id: null, name: "", title: "", description: "" };
+const EMPTY_FORM = { id: null, name: "", title: "", description: "", is_enabled: 1 };
+
+function isAppEnabled(value) {
+  return Number(value) !== 0;
+}
 
 function AdminApplicationsPage() {
+  const { refreshUser } = useAuth();
   const [applications, setApplications] = useState([]);
   const [form, setForm] = useState(EMPTY_FORM);
   const [loading, setLoading] = useState(true);
@@ -39,12 +45,13 @@ function AdminApplicationsPage() {
 
   const startEdit = (app) => {
     setValidationErrors({});
-    setForm({
-      id: app.id,
-      name: app.name ?? "",
-      title: app.title ?? "",
-      description: app.description ?? "",
-    });
+      setForm({
+        id: app.id,
+        name: app.name ?? "",
+        title: app.title ?? "",
+        description: app.description ?? "",
+        is_enabled: isAppEnabled(app.is_enabled) ? 1 : 0,
+      });
   };
 
   const validateForm = (f) => {
@@ -68,6 +75,7 @@ function AdminApplicationsPage() {
         name: form.name.trim(),
         title: form.title.trim(),
         description: form.description.trim() || null,
+        is_enabled: isAppEnabled(form.is_enabled) ? 1 : 0,
       };
 
       if (form.id) {
@@ -83,7 +91,7 @@ function AdminApplicationsPage() {
         setStatus("Application created.");
       }
 
-      await loadData();
+      await Promise.all([loadData(), refreshUser?.()]);
       resetForm();
     } catch (e) {
       setError(e.message);
@@ -145,6 +153,14 @@ function AdminApplicationsPage() {
             />
           </label>
         </div>
+        <label className="calendar-checkbox-row">
+          <input
+            type="checkbox"
+            checked={isAppEnabled(form.is_enabled)}
+            onChange={(e) => setForm({ ...form, is_enabled: e.target.checked ? 1 : 0 })}
+          />
+          Enabled — when off, this app is hidden from navigation and users cannot open it, even if they have the role.
+        </label>
         <div>
           <button type="submit" disabled={saving}>
             {form.id ? "Update Application" : "Create Application"}
@@ -188,8 +204,15 @@ function AdminApplicationsPage() {
       ) : (
         <DataTable
           storageKey="data-table:admin:applications"
-          columns={["id", "name", "title", "description"]}
+          columns={["id", "name", "title", "description", "is_enabled"]}
           rows={applications}
+          columnLabels={{ is_enabled: "enabled" }}
+          formatCell={(column, value) => {
+            if (column === "is_enabled") {
+              return isAppEnabled(value) ? "On" : "Off";
+            }
+            return null;
+          }}
           onRowClick={(app) => startEdit(app)}
         />
       )}

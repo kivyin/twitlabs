@@ -9,7 +9,9 @@ import { insertRow, runQuery, selectRows } from "../api/dbApi";
 import { getCollectionDefinitions, getFieldDefinitions } from "../api/dictionaryApi";
 import DataTable from "../components/DataTable";
 import { Button, Modal } from "../components/ui";
+import { useAuth } from "../context/AuthContext";
 import { useForeignKeyLabelMaps } from "../hooks/useForeignKeyLabelMaps";
+import { canSeeAppSchema } from "../utils/roles";
 
 function formatRemaining(ms) {
   if (ms <= 0) return "0:00";
@@ -19,7 +21,64 @@ function formatRemaining(ms) {
   return `${minutes}:${String(seconds).padStart(2, "0")}`;
 }
 
+const WRITE_SQL_TYPES = new Set(["INSERT", "UPDATE", "DELETE"]);
+
+function collectRowColumns(rows) {
+  const columns = [];
+  for (const row of rows) {
+    if (!row || typeof row !== "object") continue;
+    for (const key of Object.keys(row)) {
+      if (!columns.includes(key)) columns.push(key);
+    }
+  }
+  return columns;
+}
+
+function classifySqlResult(result) {
+  if (!result || typeof result !== "object") {
+    return { kind: "json" };
+  }
+  const type = String(result.statement_type || "").toUpperCase();
+  const rows = Array.isArray(result.rows) ? result.rows : null;
+
+  if (WRITE_SQL_TYPES.has(type)) {
+    return {
+      kind: "statement",
+      type,
+      changes: Number(result.changes) || 0,
+      lastInsertRowid: result.lastInsertRowid,
+    };
+  }
+
+  if (rows) {
+    return {
+      kind: "rows",
+      rows,
+      columns: collectRowColumns(rows),
+    };
+  }
+
+  return { kind: "json" };
+}
+
+function formatStatementOutput({ type, changes, lastInsertRowid }) {
+  const lines = [`${type} completed.`, `${changes} change(s).`];
+  if (type === "INSERT" && lastInsertRowid != null && Number(lastInsertRowid) > 0) {
+    lines.push(`last insert id: ${lastInsertRowid}`);
+  }
+  return lines.join("\n");
+}
+
+function formatSqlCell(value) {
+  if (value == null) return "";
+  if (typeof value === "object") return JSON.stringify(value);
+  return String(value);
+}
+
 function AppIdePage({ embedded = false }) {
+  const { canAccessApp } = useAuth();
+  const [pageTab, setPageTab] = useState("query");
+  const [queryMode, setQueryMode] = useState("simple");
   const [tables, setTables] = useState([]);
   const [selectedTable, setSelectedTable] = useState("");
   const [columnLabels, setColumnLabels] = useState({});
@@ -30,6 +89,7 @@ function AppIdePage({ embedded = false }) {
   const [insertJson, setInsertJson] = useState("{}");
   const [sql, setSql] = useState("");
   const [sqlResult, setSqlResult] = useState(null);
+  const [sqlResultView, setSqlResultView] = useState("table");
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
   const [elevatedUntil, setElevatedUntil] = useState(null);
@@ -52,6 +112,10 @@ function AppIdePage({ embedded = false }) {
   });
 
   const columns = rowColumns;
+  const sqlResultInfo = useMemo(() => classifySqlResult(sqlResult), [sqlResult]);
+
+  const selectedTableLabel =
+    tables.find((table) => table.name === selectedTable)?.label || selectedTable || "Table";
 
   useEffect(() => {
     let active = true;
@@ -112,7 +176,9 @@ function AppIdePage({ embedded = false }) {
   useEffect(() => {
     async function loadInitialData() {
       try {
-        const availableTables = await getCollectionDefinitions();
+        const availableTables = (await getCollectionDefinitions()).filter((table) =>
+          canSeeAppSchema(table.application, canAccessApp)
+        );
         setTables(availableTables);
 
         if (availableTables.length > 0) {
@@ -141,7 +207,12 @@ function AppIdePage({ embedded = false }) {
     }
 
     loadInitialData();
-  }, []);
+  }, [canAccessApp]);
+
+  const handleTableChange = (nextTable) => {
+    setSelectedTable(nextTable);
+    setSql(`SELECT * FROM ${nextTable} LIMIT ${limit}`);
+  };
 
   const handleInsert = async (event) => {
     event.preventDefault();
@@ -175,7 +246,13 @@ function AppIdePage({ embedded = false }) {
         ? await runElevatedIdeSql({ sql })
         : await runQuery({ table: selectedTable, sql });
       setSqlResult(result);
-      if (isElevated && (result.changes > 0 || result.statement_type === "INSERT" || result.statement_type === "UPDATE" || result.statement_type === "DELETE")) {
+      if (
+        isElevated &&
+        (result.changes > 0 ||
+          result.statement_type === "INSERT" ||
+          result.statement_type === "UPDATE" ||
+          result.statement_type === "DELETE")
+      ) {
         setStatus(
           `Elevated SQL executed (${result.statement_type || "statement"} · ${result.changes ?? 0} change(s)).`
         );
@@ -219,107 +296,228 @@ function AppIdePage({ embedded = false }) {
     }
   };
 
+  const switchPageTab = (tab) => {
+    setPageTab(tab);
+    setError("");
+    setStatus("");
+  };
+
+  const tableSelect = (
+    <label>
+      Table
+      <select value={selectedTable} onChange={(event) => handleTableChange(event.target.value)}>
+        {tables.map((table) => (
+          <option key={table.name} value={table.name}>
+            {table.label}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+
   const Wrapper = embedded ? "div" : "section";
   return (
     <Wrapper className={embedded ? undefined : "panel"}>
       {!embedded && <h1>App IDE</h1>}
       <h2 style={embedded ? { marginTop: 0 } : undefined}>IDE</h2>
       <p className="subtext">
-        Run direct table queries and insert JSON data. Custom SQL is read-only unless you escalate
-        access for emergency updates.
+        Query tables, run SQL, or insert a row from JSON. Advanced SQL is read-only unless you
+        escalate access for emergency writes.
       </p>
 
-      <div className={`ide-elevation-banner${isElevated ? " is-elevated" : ""}`}>
-        <div>
-          <strong>{isElevated ? "Elevated access active" : "Read-only SQL"}</strong>
-          <p className="subtext">
-            {isElevated
-              ? `Emergency write SQL enabled — INSERT / UPDATE / DELETE allowed · ${formatRemaining(remainingMs)} remaining`
-              : "Re-enter your password to unlock INSERT / UPDATE / DELETE for 15 minutes."}
-          </p>
-        </div>
-        <div className="ide-elevation-actions">
-          {isElevated ? (
-            <button type="button" className="danger-button" onClick={handleDeescalate}>
-              End elevated access
-            </button>
-          ) : (
-            <button
-              type="button"
-              className="button-primary"
-              onClick={() => {
-                setEscalatePassword("");
-                setShowEscalateModal(true);
-              }}
-            >
-              Escalate access
-            </button>
-          )}
-        </div>
-      </div>
-
-      <div className="row">
-        <label>
-          Table
-          <select
-            value={selectedTable}
-            onChange={(event) => {
-              const nextTable = event.target.value;
-              setSelectedTable(nextTable);
-              setSql(`SELECT * FROM ${nextTable} LIMIT ${limit}`);
-            }}
-          >
-            {tables.map((table) => (
-              <option key={table.name} value={table.name}>
-                {table.label}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          Limit
-          <input
-            type="number"
-            min={1}
-            max={500}
-            value={limit}
-            onChange={(event) => setLimit(event.target.value)}
-          />
-        </label>
-        <button type="button" onClick={() => loadRows()}>
-          Load Rows
+      <div className="ide-tabs" role="tablist" aria-label="IDE sections">
+        <button
+          type="button"
+          role="tab"
+          className={`ide-tab${pageTab === "query" ? " active" : ""}`}
+          aria-selected={pageTab === "query"}
+          onClick={() => switchPageTab("query")}
+        >
+          Query
+        </button>
+        <button
+          type="button"
+          role="tab"
+          className={`ide-tab${pageTab === "upload" ? " active" : ""}`}
+          aria-selected={pageTab === "upload"}
+          onClick={() => switchPageTab("upload")}
+        >
+          Upload
         </button>
       </div>
 
-      {rows.length > 0 ? (
-        <DataTable
-          key={selectedTable}
-          storageKey={`data-table:ide:${selectedTable}`}
-          columns={columns}
-          rows={rows}
-          columnLabels={columnLabels}
-          formatCell={(column, value) => formatReference(column, value)}
-        />
+      {pageTab === "query" ? (
+        <div className="ide-tab-panel">
+          <div className="ide-mode-toggle" role="tablist" aria-label="Query mode">
+            <button
+              type="button"
+              role="tab"
+              className={`ide-mode-toggle-button${queryMode === "simple" ? " active" : ""}`}
+              aria-selected={queryMode === "simple"}
+              onClick={() => setQueryMode("simple")}
+            >
+              Simple
+            </button>
+            <button
+              type="button"
+              role="tab"
+              className={`ide-mode-toggle-button${queryMode === "advanced" ? " active" : ""}`}
+              aria-selected={queryMode === "advanced"}
+              onClick={() => setQueryMode("advanced")}
+            >
+              Advanced
+            </button>
+          </div>
+
+          {queryMode === "simple" ? (
+            <>
+              <p className="subtext">Pick a table and load rows.</p>
+              <div className="row">
+                {tableSelect}
+                <label>
+                  Limit
+                  <input
+                    type="number"
+                    min={1}
+                    max={500}
+                    value={limit}
+                    onChange={(event) => setLimit(event.target.value)}
+                  />
+                </label>
+                <button type="button" onClick={() => loadRows()}>
+                  Load Rows
+                </button>
+              </div>
+
+              {rows.length > 0 ? (
+                <DataTable
+                  key={selectedTable}
+                  storageKey={`data-table:ide:${selectedTable}`}
+                  columns={columns}
+                  rows={rows}
+                  columnLabels={columnLabels}
+                  formatCell={(column, value) => formatReference(column, value)}
+                />
+              ) : (
+                <p>No rows loaded yet.</p>
+              )}
+            </>
+          ) : (
+            <>
+              <div className={`ide-elevation-banner${isElevated ? " is-elevated" : ""}`}>
+                <div>
+                  <strong>{isElevated ? "Elevated access active" : "Read-only SQL"}</strong>
+                  <p className="subtext">
+                    {isElevated
+                      ? `INSERT / UPDATE / DELETE allowed · ${formatRemaining(remainingMs)} remaining`
+                      : "Escalate to run INSERT, UPDATE, or DELETE for 15 minutes."}
+                  </p>
+                </div>
+                <div className="ide-elevation-actions">
+                  {isElevated ? (
+                    <button type="button" className="danger-button" onClick={handleDeescalate}>
+                      End elevated access
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      className="button-primary"
+                      onClick={() => {
+                        setEscalatePassword("");
+                        setShowEscalateModal(true);
+                      }}
+                    >
+                      Escalate access
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              <form className="ide-sql-form" onSubmit={handleRunSql}>
+                <label>
+                  SQL
+                  <textarea
+                    rows={10}
+                    value={sql}
+                    onChange={(event) => setSql(event.target.value)}
+                    spellCheck={false}
+                    placeholder="SELECT * FROM users LIMIT 25"
+                  />
+                </label>
+                <button type="submit">{isElevated ? "Run elevated SQL" : "Run SQL"}</button>
+              </form>
+
+              {sqlResult ? (
+                <div className="ide-sql-result">
+                  {sqlResultInfo.kind === "statement" ? (
+                    <pre className="ide-sql-statement-output">
+                      {formatStatementOutput(sqlResultInfo)}
+                    </pre>
+                  ) : (
+                    <>
+                      <div className="ide-sql-result-toolbar" role="tablist" aria-label="SQL result view">
+                        <button
+                          type="button"
+                          role="tab"
+                          className={`ide-sql-result-tab${sqlResultView === "table" ? " active" : ""}`}
+                          aria-selected={sqlResultView === "table"}
+                          onClick={() => setSqlResultView("table")}
+                        >
+                          Table
+                        </button>
+                        <button
+                          type="button"
+                          role="tab"
+                          className={`ide-sql-result-tab${sqlResultView === "json" ? " active" : ""}`}
+                          aria-selected={sqlResultView === "json"}
+                          onClick={() => setSqlResultView("json")}
+                        >
+                          JSON
+                        </button>
+                      </div>
+                      {sqlResultView === "table" && sqlResultInfo.kind === "rows" ? (
+                        sqlResultInfo.rows.length > 0 ? (
+                          <DataTable
+                            storageKey="data-table:ide:sql-result"
+                            columns={sqlResultInfo.columns}
+                            rows={sqlResultInfo.rows}
+                            formatCell={(_column, value) => formatSqlCell(value)}
+                            emptyMessage="Query returned 0 rows."
+                          />
+                        ) : (
+                          <p className="subtext">Query returned 0 rows.</p>
+                        )
+                      ) : (
+                        <pre className="ide-sql-json-output">
+                          {JSON.stringify(sqlResult, null, 2)}
+                        </pre>
+                      )}
+                    </>
+                  )}
+                </div>
+              ) : null}
+            </>
+          )}
+        </div>
       ) : (
-        <p>No rows loaded yet.</p>
+        <div className="ide-tab-panel">
+          <p className="subtext">Insert one row into a table by pasting a JSON object.</p>
+          <form className="ide-upload-form" onSubmit={handleInsert}>
+            <div className="row">{tableSelect}</div>
+            <label>
+              JSON
+              <textarea
+                rows={10}
+                value={insertJson}
+                onChange={(event) => setInsertJson(event.target.value)}
+                spellCheck={false}
+                placeholder='{ "username": "ada", "display_name": "Ada" }'
+              />
+            </label>
+            <button type="submit">Insert into {selectedTableLabel}</button>
+          </form>
+        </div>
       )}
-
-      <h2>Insert Row</h2>
-      <form onSubmit={handleInsert}>
-        <textarea
-          rows={8}
-          value={insertJson}
-          onChange={(event) => setInsertJson(event.target.value)}
-        />
-        <button type="submit">Insert Into {selectedTable || "Table"}</button>
-      </form>
-
-      <h2>Custom SQL {isElevated ? "(elevated)" : "(read-only)"}</h2>
-      <form onSubmit={handleRunSql}>
-        <textarea rows={6} value={sql} onChange={(event) => setSql(event.target.value)} />
-        <button type="submit">{isElevated ? "Run elevated SQL" : "Run SQL"}</button>
-      </form>
-      {sqlResult && <pre>{JSON.stringify(sqlResult, null, 2)}</pre>}
 
       {status && <p className="status">{status}</p>}
       {error && <p className="error">{error}</p>}

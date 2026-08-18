@@ -939,9 +939,14 @@ const ensureApplications = () => {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL UNIQUE,
       title TEXT NOT NULL,
-      description TEXT
+      description TEXT,
+      is_enabled INTEGER NOT NULL DEFAULT 1
     )
   `);
+
+  if (!hasColumn(APPLICATIONS_TABLE, "is_enabled")) {
+    run(`ALTER TABLE ${APPLICATIONS_TABLE} ADD COLUMN is_enabled INTEGER NOT NULL DEFAULT 1`);
+  }
 
   run(`
     INSERT OR IGNORE INTO ${APPLICATIONS_TABLE} (name, title, description)
@@ -3742,8 +3747,31 @@ const isSessionAdmin = (user) =>
   user?.roles?.some((role) => role.application === "system" && role.role === "admin") ??
   false;
 
+const listEnabledApplicationNames = () =>
+  all(
+    `SELECT name FROM ${APPLICATIONS_TABLE} WHERE COALESCE(is_enabled, 1) != 0 ORDER BY name`
+  ).map((row) => row.name);
+
+const isApplicationEnabled = (appName) => {
+  if (!appName) return false;
+  const row = all(
+    `SELECT is_enabled FROM ${APPLICATIONS_TABLE} WHERE name = ? LIMIT 1`,
+    [appName]
+  )[0];
+  if (!row) return false;
+  return Number(row.is_enabled) !== 0;
+};
+
+const withEnabledApps = (userPayload = {}) => ({
+  ...userPayload,
+  enabled_apps: listEnabledApplicationNames(),
+});
+
 const userCanAccessApp = (user, appName) => {
   if (!user || !appName) {
+    return false;
+  }
+  if (!isApplicationEnabled(appName)) {
     return false;
   }
   const allowed = getAllowedAppRoles(appName);
@@ -3846,11 +3874,19 @@ const assertUserCanAccessTable = (user, tableName, { forWrite = false } = {}) =>
 
 const getTablesForUser = (user) => {
   const tables = getTables();
-  if (isSessionAdmin(user)) {
-    return tables;
-  }
   return tables.filter((tableName) => {
     try {
+      if (isSessionAdmin(user)) {
+        const application = getTableApplication(tableName);
+        if (
+          application &&
+          ADMIN_EXPLICIT_APPS.has(application) &&
+          !userCanAccessApp(user, application)
+        ) {
+          return false;
+        }
+        return true;
+      }
       assertUserCanAccessTable(user, tableName, { forWrite: false });
       return true;
     } catch {
@@ -3893,12 +3929,55 @@ const requireAdmin = (req, res) => {
   return user;
 };
 
-const queryDb = ({ sql, params = [], table }, { allowSecrets = false } = {}) => {
+const getDeniedVaultTables = (user) => {
+  const names = [];
+  for (const appName of ADMIN_EXPLICIT_APPS) {
+    if (userCanAccessApp(user, appName)) continue;
+    const rows = all(
+      `
+        SELECT name
+        FROM ${SYSTEM_DICTIONARY_TABLE}
+        WHERE type = 'collection' AND application = ?
+      `,
+      [appName]
+    );
+    for (const row of rows) {
+      if (row?.name) names.push(String(row.name));
+    }
+  }
+  return names;
+};
+
+const assertSqlDoesNotTouchDeniedApps = (user, sql) => {
+  if (!user || !sql) return;
+  const denied = getDeniedVaultTables(user);
+  if (denied.length === 0) return;
+  const haystack = String(sql);
+  for (const tableName of denied) {
+    const escaped = tableName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    if (new RegExp(`\\b${escaped}\\b`, "i").test(haystack)) {
+      const application = getTableApplication(tableName);
+      throw new Error(`You do not have access to the ${application || tableName} app.`);
+    }
+  }
+};
+
+const recordBelongsToDeniedVault = (user, tableName) => {
+  const application = getTableApplication(tableName);
+  return Boolean(
+    application &&
+      ADMIN_EXPLICIT_APPS.has(application) &&
+      !userCanAccessApp(user, application)
+  );
+};
+
+const queryDb = ({ sql, params = [], table }, { allowSecrets = false, user = null } = {}) => {
   const normalizedSql = normalizeSingleSqlStatement(sql);
 
   if (table) {
     assertValidTable(table);
   }
+  assertSqlDoesNotTouchDeniedApps(user, normalizedSql);
 
   const statementType = getStatementType(normalizedSql);
   const readStatements = new Set(["SELECT", "WITH", "PRAGMA"]);
@@ -3932,6 +4011,7 @@ const ELEVATED_IDE_STATEMENTS = new Set([
 
 const executeElevatedIdeSql = ({ sql, params = [] }, user = null, options = {}) => {
   const normalizedSql = normalizeSingleSqlStatement(sql);
+  assertSqlDoesNotTouchDeniedApps(user, normalizedSql);
 
   const statementType = getStatementType(normalizedSql);
   if (!ELEVATED_IDE_STATEMENTS.has(statementType)) {
@@ -9481,11 +9561,11 @@ export function sqliteApiPlugin() {
             const token = createSession(sessionUser, { mustChangePassword });
             json(res, 200, {
               token,
-              user: {
+              user: withEnabledApps({
                 ...sessionUser,
                 must_change_password: mustChangePassword,
                 troublehub_admin_elevated: false,
-              },
+              }),
               session_idle_seconds: SESSION_IDLE_SECONDS,
               is_local_network: isLocalNetworkClient(req),
             });
@@ -9522,12 +9602,12 @@ export function sqliteApiPlugin() {
             }
             const stored = sessions.get(session.token);
             json(res, 200, {
-              user: {
+              user: withEnabledApps({
                 ...session.user,
                 must_change_password: Boolean(session.mustChangePassword),
                 ide_elevated_until: getIdeElevatedUntil(stored),
                 troublehub_admin_elevated: Boolean(stored?.troublehubAdminElevated),
-              },
+              }),
               session_idle_seconds: SESSION_IDLE_SECONDS,
               is_local_network: isLocalNetworkClient(req),
             });
@@ -9707,7 +9787,7 @@ export function sqliteApiPlugin() {
               json(res, 403, { error: "Admin access required for ad-hoc queries." });
               return;
             }
-            json(res, 200, queryDb(body, { allowSecrets }));
+            json(res, 200, queryDb(body, { allowSecrets, user }));
             return;
           }
 
@@ -9954,7 +10034,7 @@ export function sqliteApiPlugin() {
                 FROM ${SYSTEM_DELETES_TABLE}
                 ORDER BY created_on DESC, id DESC
               `
-            );
+            ).filter((record) => !recordBelongsToDeniedVault(actingUser, record.source_table));
             json(res, 200, { records });
             return;
           }
@@ -10016,6 +10096,17 @@ export function sqliteApiPlugin() {
             if (!actingUser) return;
 
             const archiveId = Number(restoreMatch[1]);
+            const archive = all(
+              `SELECT source_table FROM ${SYSTEM_DELETES_TABLE} WHERE id = ? LIMIT 1`,
+              [archiveId]
+            )[0];
+            if (archive && recordBelongsToDeniedVault(actingUser, archive.source_table)) {
+              sendApiError(res, req, 403, "You do not have access to restore that record.", {
+                function_name: "restoreArchivedRecord",
+                user: actingUser,
+              });
+              return;
+            }
             json(res, 200, restoreArchivedRecord(archiveId, actingUser.id));
             return;
           }

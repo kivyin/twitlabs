@@ -4,6 +4,8 @@ import { getApplications, getCollectionDefinitions } from "../../api/dictionaryA
 import AdminDictionaryForm from "../../components/admin/AdminDictionaryForm";
 import AdminDictionaryTable from "../../components/admin/AdminDictionaryTable";
 import ConfirmModal from "../../components/common/ConfirmModal";
+import { useAuth } from "../../context/AuthContext";
+import { canSeeAppSchema } from "../../utils/roles";
 
 const EMPTY_FORM = {
   id: null,
@@ -21,6 +23,7 @@ const EMPTY_FORM = {
 };
 
 function AdminFieldsPage() {
+  const { canAccessApp } = useAuth();
   const [entries, setEntries] = useState([]);
   const [collections, setCollections] = useState([]);
   const [applications, setApplications] = useState([]);
@@ -50,9 +53,21 @@ function AdminFieldsPage() {
         getCollectionDefinitions(),
         getApplications(),
       ]);
-      setEntries(dictionaryResult.rows ?? []);
-      setCollections(collectionsData.filter((c) => c.name !== "system_dictionary"));
-      setApplications(applicationsData);
+      setEntries(
+        (dictionaryResult.rows ?? []).filter((entry) =>
+          canSeeAppSchema(entry.application_name || entry.application, canAccessApp)
+        )
+      );
+      setCollections(
+        collectionsData.filter(
+          (collection) =>
+            collection.name !== "system_dictionary" &&
+            canSeeAppSchema(collection.application, canAccessApp)
+        )
+      );
+      setApplications(
+        applicationsData.filter((app) => canSeeAppSchema(app.name, canAccessApp))
+      );
     } catch (e) {
       setError(e.message);
     } finally {

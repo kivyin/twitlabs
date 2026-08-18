@@ -3,10 +3,12 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { getNavigation, groupNavigationItems } from "../api/navigationApi";
 import { useBrowseStack } from "../context/BrowseStackContext";
 import { useFavorites } from "../context/FavoritesContext";
+import { useAuth } from "../context/AuthContext";
 import { useNavLayoutPreferences } from "../hooks/useNavLayoutPreferences";
 import { locationToPath } from "../utils/browseStack";
 import { applyNavLayout, getNavLayoutCatalog } from "../utils/navLayout";
 import { getNavIcon } from "../utils/navIcons";
+import { appNameFromNavPath } from "../utils/roles";
 import {
   buildSidebarHistoryEntries,
   getSidebarHistoryLabel,
@@ -83,6 +85,7 @@ function IronmanDialNav({ onNavigate }) {
   const navigate = useNavigate();
   const { favorites } = useFavorites();
   const { visits } = useBrowseStack();
+  const { user, canAccessApp } = useAuth();
   const dialRef = useRef(null);
   const [navItems, setNavItems] = useState([]);
   const [mode, setMode] = useState("nav");
@@ -102,7 +105,7 @@ function IronmanDialNav({ onNavigate }) {
     return () => {
       active = false;
     };
-  }, []);
+  }, [user?.enabled_apps]);
 
   useEffect(() => {
     setOpen(false);
@@ -127,19 +130,28 @@ function IronmanDialNav({ onNavigate }) {
 
   const currentPath = locationToPath(location);
   const historyPaths = useMemo(
-    () => buildSidebarHistoryEntries(visits, currentPath),
-    [visits, currentPath]
+    () =>
+      buildSidebarHistoryEntries(visits, currentPath).filter((path) => {
+        const appName = appNameFromNavPath(path);
+        return !appName || canAccessApp(appName);
+      }),
+    [visits, currentPath, canAccessApp]
   );
 
   const mainItems = useMemo(() => {
     if (mode === "favorites") {
-      return favorites.map((favorite) => ({
-        id: `fav-${favorite.id}`,
-        label: favorite.label,
-        path: favorite.path,
-        kind: "favorite",
-        favorite,
-      }));
+      return favorites
+        .filter((favorite) => {
+          const appName = appNameFromNavPath(favorite.path);
+          return !appName || canAccessApp(appName);
+        })
+        .map((favorite) => ({
+          id: `fav-${favorite.id}`,
+          label: favorite.label,
+          path: favorite.path,
+          kind: "favorite",
+          favorite,
+        }));
     }
 
     if (mode === "history") {
@@ -198,6 +210,7 @@ function IronmanDialNav({ onNavigate }) {
     appMains,
     adminMains,
     childrenByParent,
+    canAccessApp,
   ]);
 
   const getChildCount = (item) => {

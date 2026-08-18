@@ -20,6 +20,7 @@ import {
 } from "../utils/lcarsNavColors";
 import { subscribeLcarsPulse } from "../utils/lcarsPulseClock";
 import { applyNavLayout, getNavLayoutCatalog } from "../utils/navLayout";
+import { appNameFromNavPath } from "../utils/roles";
 import { renderFavoriteIcon } from "../utils/favoriteIcons";
 import {
   buildSidebarHistoryEntries,
@@ -195,7 +196,7 @@ function Sidebar({
   toggleNavGroup,
   collapseAllNavGroups,
 }) {
-  const { isAdmin } = useAuth();
+  const { isAdmin, canAccessApp, user } = useAuth();
   const { favorites, deleteFavorite, updateFavorite } = useFavorites();
   const { visits, clearStack } = useBrowseStack();
   const { fullTitle } = useBranding();
@@ -223,7 +224,7 @@ function Sidebar({
     return () => {
       active = false;
     };
-  }, []);
+  }, [user?.enabled_apps]);
 
   const groupedNav = useMemo(() => groupNavigationItems(navItems), [navItems]);
 
@@ -247,8 +248,21 @@ function Sidebar({
 
   const currentPath = locationToPath(location);
   const historyPaths = useMemo(
-    () => buildSidebarHistoryEntries(visits, currentPath),
-    [visits, currentPath]
+    () =>
+      buildSidebarHistoryEntries(visits, currentPath).filter((path) => {
+        const appName = appNameFromNavPath(path);
+        return !appName || canAccessApp(appName);
+      }),
+    [visits, currentPath, canAccessApp]
+  );
+
+  const visibleFavorites = useMemo(
+    () =>
+      favorites.filter((favorite) => {
+        const appName = appNameFromNavPath(favorite.path);
+        return !appName || canAccessApp(appName);
+      }),
+    [favorites, canAccessApp]
   );
 
   const compact = isCollapsed;
@@ -491,12 +505,12 @@ function Sidebar({
 
         {activeTab === "favorites" && (
           <>
-            {favorites.length === 0 ? (
+            {visibleFavorites.length === 0 ? (
               <p className="sidebar-empty">
                 {compact ? "No favorites yet." : "Star a page from its header to pin it here."}
               </p>
             ) : (
-              favorites.map((favorite) => (
+              visibleFavorites.map((favorite) => (
                 <div key={favorite.id} className="sidebar-favorite-row">
                   <NavLink
                     to={favorite.path}

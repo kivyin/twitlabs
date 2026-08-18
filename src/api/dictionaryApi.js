@@ -20,7 +20,7 @@ export async function getApplications() {
   const result = await runQuery({
     table: APPLICATIONS_TABLE,
     sql: `
-      SELECT id, name, title, description
+      SELECT id, name, title, description, COALESCE(is_enabled, 1) AS is_enabled
       FROM applications
       ORDER BY title, name
     `,

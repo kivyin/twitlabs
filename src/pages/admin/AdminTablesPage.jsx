@@ -6,6 +6,8 @@ import AdminDictionaryForm from "../../components/admin/AdminDictionaryForm";
 import AdminDictionaryTable from "../../components/admin/AdminDictionaryTable";
 import DictionaryHealthPanel from "../../components/admin/DictionaryHealthPanel";
 import ConfirmModal from "../../components/common/ConfirmModal";
+import { useAuth } from "../../context/AuthContext";
+import { canSeeAppSchema } from "../../utils/roles";
 
 const EMPTY_FORM = {
   id: null,
@@ -24,6 +26,7 @@ const EMPTY_FORM = {
 
 function AdminTablesPage() {
   const navigate = useNavigate();
+  const { canAccessApp } = useAuth();
   const [allEntries, setAllEntries] = useState([]);
   const [applications, setApplications] = useState([]);
   const [form, setForm] = useState(EMPTY_FORM);
@@ -51,8 +54,14 @@ function AdminTablesPage() {
         }),
         getApplications(),
       ]);
-      setAllEntries(dictionaryResult.rows ?? []);
-      setApplications(applicationsData);
+      setAllEntries(
+        (dictionaryResult.rows ?? []).filter((entry) =>
+          canSeeAppSchema(entry.application_name || entry.application, canAccessApp)
+        )
+      );
+      setApplications(
+        applicationsData.filter((app) => canSeeAppSchema(app.name, canAccessApp))
+      );
     } catch (e) {
       setError(e.message);
     } finally {
