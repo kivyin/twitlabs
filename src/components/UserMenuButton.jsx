@@ -11,6 +11,7 @@ import { useBrowseStack } from "../context/BrowseStackContext";
 import { useTheme } from "../context/ThemeContext";
 import { useLcarsEffects } from "../hooks/useLcarsEffects";
 import { HISTORY_LIMIT_OPTIONS } from "../utils/browseStack";
+import { isLcarsTheme } from "../utils/theme";
 import { ThemePreferenceSelect } from "./ThemeToggle";
 
 export function HistoryLimitSelect({ id = "history-limit-preference", className = "" }) {
@@ -85,7 +86,7 @@ function UserMenuButton({ displayName = "", onSignOut, className = "", compact =
   const [open, setOpen] = useState(false);
   const { resolvedTheme } = useTheme();
   const { canAccessApp } = useAuth();
-  const isLcars = resolvedTheme === "lcars";
+  const isLcars = isLcarsTheme(resolvedTheme);
   const hasTroublehub = canAccessApp("troublehub");
   const name = String(displayName || "").trim() || "User";
   const initial = name.charAt(0).toUpperCase() || "?";

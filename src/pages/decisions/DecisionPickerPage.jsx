@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import {
   addDecisionItem,
   clearDecisionItems,
@@ -174,6 +175,8 @@ function DecisionWheel({ items, rotation, spinning, canSpin, onSpin }) {
 }
 
 function DecisionPickerPage() {
+  const [searchParams] = useSearchParams();
+  const linkedItemId = searchParams.get("item");
   const [items, setItems] = useState([]);
   const [draft, setDraft] = useState("");
   const [loading, setLoading] = useState(true);
@@ -205,6 +208,13 @@ function DecisionPickerPage() {
       }
     };
   }, []);
+
+  useEffect(() => {
+    if (!linkedItemId || items.length === 0) return;
+    document
+      .getElementById(`decision-item-${linkedItemId}`)
+      ?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [items, linkedItemId]);
 
   const applyState = (payload) => {
     setItems(payload.items ?? []);
@@ -381,7 +391,13 @@ function DecisionPickerPage() {
           ) : (
             <ul className="decision-item-list">
               {items.map((item) => (
-                <li key={item.id} className="decision-item-row">
+                <li
+                  id={`decision-item-${item.id}`}
+                  key={item.id}
+                  className={`decision-item-row${
+                    String(item.id) === String(linkedItemId) ? " global-search-target" : ""
+                  }`}
+                >
                   <span
                     className="decision-item-swatch"
                     style={{ background: item.color || "#64748b" }}

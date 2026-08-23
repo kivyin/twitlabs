@@ -27,6 +27,7 @@ import {
   TROUBLEHUB_MATCH_ANSWERS_TABLE,
   TROUBLEHUB_MATCH_CARDS_TABLE,
   TROUBLEHUB_NOTIFICATIONS_TABLE,
+  TROUBLEHUB_TABLES,
   installTroublehubApi,
 } from "./vite.troublehub-api.js";
 import { callGeminiJson, GEMINI_DEFAULT_MODEL } from "./vite.gemini.js";
@@ -1189,7 +1190,6 @@ const ensureAccountsSchema = () => {
         FOREIGN KEY (account_type_id) REFERENCES ${ACCOUNT_TYPES_TABLE}(id)
       )
     `);
-    return;
   }
 
   if (!hasColumn(ACCOUNTS_TABLE, "account_type_id")) {
@@ -1290,29 +1290,35 @@ const ensureAccountsSchema = () => {
 
   // Loans that stored principal in credit_limit (old UX) → opening_balance.
   // Skip when a positive charge already posted (that charge is likely the principal).
-  run(`
-    UPDATE ${ACCOUNTS_TABLE}
-    SET
-      opening_balance = credit_limit,
-      balance = CAST(credit_limit AS REAL) + (
-        SELECT COALESCE(SUM(t.amount), 0)
-        FROM ${TRANSACTIONS_TABLE} t
-        WHERE t.account_id = ${ACCOUNTS_TABLE}.id
-      ),
-      credit_limit = NULL
-    WHERE account_type_id IN (
-      SELECT id FROM ${ACCOUNT_TYPES_TABLE} WHERE LOWER(name) = 'loan'
-    )
-      AND COALESCE(opening_balance, 0) = 0
-      AND credit_limit IS NOT NULL
-      AND CAST(credit_limit AS REAL) > 0
-      AND NOT EXISTS (
-        SELECT 1
-        FROM ${TRANSACTIONS_TABLE} t
-        WHERE t.account_id = ${ACCOUNTS_TABLE}.id
-          AND CAST(t.amount AS REAL) > 0.005
+  const transactionsExist =
+    all("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ? LIMIT 1", [
+      TRANSACTIONS_TABLE,
+    ]).length > 0;
+  if (transactionsExist) {
+    run(`
+      UPDATE ${ACCOUNTS_TABLE}
+      SET
+        opening_balance = credit_limit,
+        balance = CAST(credit_limit AS REAL) + (
+          SELECT COALESCE(SUM(t.amount), 0)
+          FROM ${TRANSACTIONS_TABLE} t
+          WHERE t.account_id = ${ACCOUNTS_TABLE}.id
+        ),
+        credit_limit = NULL
+      WHERE account_type_id IN (
+        SELECT id FROM ${ACCOUNT_TYPES_TABLE} WHERE LOWER(name) = 'loan'
       )
-  `);
+        AND COALESCE(opening_balance, 0) = 0
+        AND credit_limit IS NOT NULL
+        AND CAST(credit_limit AS REAL) > 0
+        AND NOT EXISTS (
+          SELECT 1
+          FROM ${TRANSACTIONS_TABLE} t
+          WHERE t.account_id = ${ACCOUNTS_TABLE}.id
+            AND CAST(t.amount AS REAL) > 0.005
+        )
+    `);
+  }
 
   run(`
     CREATE TABLE IF NOT EXISTS ${ACCOUNT_JOINT_USERS_TABLE} (
@@ -1530,6 +1536,7 @@ const ensureDashboardSchema = () => {
 const TRANSACTION_FIELD_LABELS = {
   user_id: "User",
   cleared: "Cleared",
+  check_number: "Check Number",
   transaction_kind: "Kind",
   linked_transaction_id: "Linked Transaction",
   payee_id: "Payee",
@@ -1569,6 +1576,10 @@ const ensureTransactionsSchema = () => {
     run(
       `ALTER TABLE ${TRANSACTIONS_TABLE} ADD COLUMN cleared INTEGER NOT NULL DEFAULT 0`
     );
+  }
+
+  if (!hasColumn(TRANSACTIONS_TABLE, "check_number")) {
+    run(`ALTER TABLE ${TRANSACTIONS_TABLE} ADD COLUMN check_number TEXT`);
   }
 };
 
@@ -2707,6 +2718,20 @@ const seedNavigation = (userId = null) => {
     );
   }
 
+  upsertNavigationItem(
+    {
+      label: "Reports",
+      path: "/reports",
+      icon: "reports",
+      is_main: 1,
+      parent_id: null,
+      application: "reports",
+      nav_section: "apps",
+      sort_order: 50,
+    },
+    userId
+  );
+
   const applications = all(
     `SELECT id, name, title FROM ${APPLICATIONS_TABLE} ORDER BY title, name`
   );
@@ -2754,7 +2779,7 @@ const seedNavigation = (userId = null) => {
       [application.name]
     );
 
-    if (application.name === "budget") {
+    if (APP_USER_ROLES[application.name] && application.name !== "troublehub") {
       upsertNavigationItem(
         {
           label: "Report Center",
@@ -2857,6 +2882,36 @@ const seedNavigation = (userId = null) => {
     }
 
     if (application.name === "troublehub") {
+      for (const tableName of TROUBLEHUB_TABLES) {
+        const tablePath = `/app/troublehub/${tableName}`;
+        if (HIDDEN_NAV_TABLES.has(tableName) || SYSTEM_TABLES.has(tableName)) {
+          run(
+            `DELETE FROM ${SYSTEM_NAVIGATION_TABLE} WHERE path = ? OR path LIKE ?`,
+            [`/${tableName}`, `%/${tableName}`]
+          );
+          continue;
+        }
+        run(
+          `
+            DELETE FROM ${SYSTEM_NAVIGATION_TABLE}
+            WHERE path != ?
+              AND (path = ? OR path LIKE ?)
+          `,
+          [tablePath, `/${tableName}`, `%/${tableName}`]
+        );
+        run(
+          `
+            UPDATE ${SYSTEM_NAVIGATION_TABLE}
+            SET application = 'troublehub',
+                parent_id = ?,
+                nav_section = 'apps',
+                is_main = 0
+            WHERE path = ?
+          `,
+          [appMainId, tablePath]
+        );
+      }
+
       upsertNavigationItem(
         {
           label: "Match Mischief",
@@ -2919,8 +2974,7 @@ const seedNavigation = (userId = null) => {
         application.name === "site-tracker" ||
         application.name === "training" ||
         application.name === "calendar" ||
-        application.name === "home_inventory" ||
-        application.name === "troublehub"
+        application.name === "home_inventory"
       ) {
         continue;
       }
@@ -2929,10 +2983,12 @@ const seedNavigation = (userId = null) => {
         continue;
       }
 
+      const collectionPath = `/app/${application.name}/${collection.name}`;
+
       upsertNavigationItem(
         {
           label: collection.label || formatLabel(collection.name),
-          path: `/app/${application.name}/${collection.name}`,
+          path: collectionPath,
           icon: "tables",
           is_main: 0,
           parent_id: appMainId,
@@ -2964,6 +3020,7 @@ const ensureTransactionDictionaryLabels = () => {
 const DASHBOARD_WIDGET_KINDS = new Set([
   "stat",
   "table",
+  "list",
   "bars",
   "bar",
   "line",
@@ -3799,6 +3856,553 @@ const userCanAccessApp = (user, appName) => {
   return hasExplicitRole;
 };
 
+const GLOBAL_SEARCH_APP_LABELS = {
+  budget: "Budget",
+  tasks: "Tasks",
+  notes: "Notes",
+  decisions: "Decision Picker",
+  "site-tracker": "Site Tracker",
+  training: "Training",
+  calendar: "Calendar",
+  home_inventory: "Home Inventory",
+};
+
+// This is the complete production search surface. Search never derives tables or
+// fields from the dictionary, so newly added, reporting, system, and TroubleHub
+// tables remain excluded until they receive an explicit, reviewed adapter.
+export const GLOBAL_SEARCH_ALLOWLIST = Object.freeze({
+  budget: Object.freeze([ACCOUNTS_TABLE, TRANSACTIONS_TABLE, PAYEES_TABLE, GOALS_TABLE]),
+  "site-tracker": Object.freeze([ACCOUNTS_TABLE]),
+  tasks: Object.freeze([TASKS_TABLE]),
+  notes: Object.freeze([NOTES_TABLE]),
+  decisions: Object.freeze([DECISION_ITEMS_TABLE]),
+  training: Object.freeze([
+    TRAINING_EXERCISES_TABLE,
+    TRAINING_PROGRAMS_TABLE,
+    TRAINING_ROUTINES_TABLE,
+    TRAINING_WORKOUTS_TABLE,
+  ]),
+  calendar: Object.freeze([CALENDAR_EVENTS_TABLE, CALENDAR_SHOPPING_ITEMS_TABLE]),
+  home_inventory: Object.freeze([HOME_INVENTORY_ITEMS_TABLE, HOME_INVENTORY_LOCATIONS_TABLE]),
+});
+
+const normalizeSearchText = (value) =>
+  String(value ?? "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+const escapeLikePattern = (value) => String(value).replace(/[\\%_]/g, "\\$&");
+
+const searchExcerpt = (value, query, maxLength = 180) => {
+  const text = normalizeSearchText(value);
+  if (!text) return "";
+  if (text.length <= maxLength) return text;
+  const index = text.toLocaleLowerCase().indexOf(query.toLocaleLowerCase());
+  const start = Math.max(0, index < 0 ? 0 : index - Math.floor(maxLength / 3));
+  const clipped = text.slice(start, start + maxLength).trim();
+  return `${start > 0 ? "…" : ""}${clipped}${start + maxLength < text.length ? "…" : ""}`;
+};
+
+const scoreSearchHit = (title, context, query) => {
+  const needle = query.toLocaleLowerCase();
+  const primary = normalizeSearchText(title).toLocaleLowerCase();
+  const secondary = normalizeSearchText(context).toLocaleLowerCase();
+  if (primary === needle) return 100;
+  if (primary.startsWith(needle)) return 80;
+  if (primary.includes(needle)) return 60;
+  if (secondary.includes(needle)) return 40;
+  return 0;
+};
+
+const createSearchHit = ({
+  app,
+  table,
+  tableLabel,
+  id,
+  title,
+  context,
+  url,
+  updatedAt,
+  query,
+}) => ({
+  app,
+  app_label: GLOBAL_SEARCH_APP_LABELS[app] ?? app,
+  table,
+  table_label: tableLabel,
+  id,
+  title: normalizeSearchText(title) || `${tableLabel} #${id}`,
+  excerpt: searchExcerpt(context, query),
+  url,
+  updated_at: updatedAt ?? null,
+  rank: scoreSearchHit(title, context, query),
+});
+
+export const runGlobalSearch = (user, { query, limit = 40, offset = 0 } = {}) => {
+  const q = normalizeSearchText(query).slice(0, 120);
+  const parsedLimit = Number(limit);
+  const parsedOffset = Number(offset);
+  const safeLimit = Math.min(
+    Math.max(Number.isFinite(parsedLimit) ? Math.trunc(parsedLimit) : 40, 1),
+    100
+  );
+  const safeOffset = Math.max(
+    Number.isFinite(parsedOffset) ? Math.trunc(parsedOffset) : 0,
+    0
+  );
+  if (q.length < 2) {
+    return {
+      query: q,
+      results: [],
+      total: 0,
+      limit: safeLimit,
+      offset: safeOffset,
+      has_more: false,
+    };
+  }
+
+  const branchLimit = Math.min(safeLimit + safeOffset + 100, 1000);
+  const like = `%${escapeLikePattern(q)}%`;
+  const hits = [];
+  const canSearch = (appName) =>
+    Object.prototype.hasOwnProperty.call(GLOBAL_SEARCH_ALLOWLIST, appName) &&
+    appName !== "troublehub" &&
+    userCanAccessApp(user, appName);
+  const addRows = (rows, mapper) => {
+    for (const row of rows) {
+      hits.push(createSearchHit({ ...mapper(row), query: q }));
+    }
+  };
+
+  if (canSearch("budget")) {
+    addRows(
+      all(
+        `
+          SELECT a.id, a.name, a.notes, COALESCE(a.updated_on, a.created_on) AS updated_at
+          FROM ${ACCOUNTS_TABLE} a
+          JOIN ${ACCOUNT_TYPES_TABLE} at ON at.id = a.account_type_id
+          WHERE at.name != 'Site account'
+            AND (
+              a.owner_user_id = ?
+              OR a.user_id = ?
+              OR EXISTS (
+                SELECT 1
+                FROM ${ACCOUNT_JOINT_USERS_TABLE} aju
+                WHERE aju.account_id = a.id AND aju.user_id = ?
+              )
+            )
+            AND (a.name LIKE ? ESCAPE '\\' OR COALESCE(a.notes, '') LIKE ? ESCAPE '\\')
+          LIMIT ?
+        `,
+        [user.id, user.id, user.id, like, like, branchLimit]
+      ),
+      (row) => ({
+        app: "budget",
+        table: ACCOUNTS_TABLE,
+        tableLabel: "Accounts",
+        id: row.id,
+        title: row.name,
+        context: row.notes,
+        url: `/app/budget/accounts/${row.id}/edit`,
+        updatedAt: row.updated_at,
+      })
+    );
+    addRows(
+      all(
+        `
+          SELECT t.id, t.description, t.transaction_kind, t.amount,
+                 p.name AS payee_name, c.name AS category_name,
+                 COALESCE(t.updated_on, t.created_on) AS updated_at
+          FROM ${TRANSACTIONS_TABLE} t
+          JOIN ${ACCOUNTS_TABLE} a ON a.id = t.account_id
+          JOIN ${ACCOUNT_TYPES_TABLE} at ON at.id = a.account_type_id
+          LEFT JOIN ${PAYEES_TABLE} p ON p.id = t.payee_id
+          LEFT JOIN ${CATEGORIES_TABLE} c ON c.id = t.category_id
+          WHERE at.name != 'Site account'
+            AND (
+              a.owner_user_id = ?
+              OR a.user_id = ?
+              OR EXISTS (
+                SELECT 1
+                FROM ${ACCOUNT_JOINT_USERS_TABLE} aju
+                WHERE aju.account_id = a.id AND aju.user_id = ?
+              )
+            )
+            AND (
+              COALESCE(t.description, '') LIKE ? ESCAPE '\\'
+              OR COALESCE(p.name, '') LIKE ? ESCAPE '\\'
+              OR COALESCE(c.name, '') LIKE ? ESCAPE '\\'
+            )
+          LIMIT ?
+        `,
+        [user.id, user.id, user.id, like, like, like, branchLimit]
+      ),
+      (row) => ({
+        app: "budget",
+        table: TRANSACTIONS_TABLE,
+        tableLabel: "Transactions",
+        id: row.id,
+        title: row.description || row.payee_name || `Transaction #${row.id}`,
+        context: [row.payee_name, row.category_name].filter(Boolean).join(" · "),
+        url:
+          row.transaction_kind === "transfer"
+            ? `/app/budget/transfers/${row.id}/edit`
+            : `/app/budget/transactions/${row.id}/edit`,
+        updatedAt: row.updated_at,
+      })
+    );
+    for (const definition of [
+      {
+        table: PAYEES_TABLE,
+        label: "Payees",
+        title: "name",
+        context: "COALESCE(description, '') || ' ' || COALESCE(notes, '')",
+      },
+      {
+        table: GOALS_TABLE,
+        label: "Savings Goals",
+        title: "name",
+        context: "COALESCE(notes, '')",
+      },
+    ]) {
+      addRows(
+        all(
+          `
+            SELECT id, ${definition.title} AS title, ${definition.context} AS context,
+                   COALESCE(updated_on, created_on) AS updated_at
+            FROM ${definition.table}
+            WHERE (${definition.title} LIKE ? ESCAPE '\\' OR ${definition.context} LIKE ? ESCAPE '\\')
+              ${definition.table === GOALS_TABLE ? "AND user_id = ?" : ""}
+            LIMIT ?
+          `,
+          definition.table === GOALS_TABLE
+            ? [like, like, user.id, branchLimit]
+            : [like, like, branchLimit]
+        ),
+        (row) => ({
+          app: "budget",
+          table: definition.table,
+          tableLabel: definition.label,
+          id: row.id,
+          title: row.title,
+          context: row.context,
+          url: `/app/budget/${definition.table}/${row.id}/edit`,
+          updatedAt: row.updated_at,
+        })
+      );
+    }
+  }
+
+  if (canSearch("site-tracker")) {
+    addRows(
+      all(
+        `
+          SELECT a.id, a.name, a.login_url, a.site_username, a.notes,
+                 COALESCE(a.updated_on, a.created_on) AS updated_at
+          FROM ${ACCOUNTS_TABLE} a
+          JOIN ${ACCOUNT_TYPES_TABLE} at ON at.id = a.account_type_id
+          WHERE at.name = 'Site account'
+            AND (a.owner_user_id = ? OR a.user_id = ?)
+            AND (
+              a.name LIKE ? ESCAPE '\\'
+              OR COALESCE(a.login_url, '') LIKE ? ESCAPE '\\'
+              OR COALESCE(a.site_username, '') LIKE ? ESCAPE '\\'
+              OR COALESCE(a.notes, '') LIKE ? ESCAPE '\\'
+            )
+          LIMIT ?
+        `,
+        [user.id, user.id, like, like, like, like, branchLimit]
+      ),
+      (row) => ({
+        app: "site-tracker",
+        table: ACCOUNTS_TABLE,
+        tableLabel: "Sites",
+        id: row.id,
+        title: row.name,
+        context: [row.login_url, row.site_username, row.notes].filter(Boolean).join(" · "),
+        url: `/app/site-tracker/accounts/${row.id}/edit`,
+        updatedAt: row.updated_at,
+      })
+    );
+  }
+
+  if (canSearch("tasks")) {
+    addRows(
+      all(
+        `
+          SELECT t.id, t.title, t.description, t.status, p.name AS project_name,
+                 COALESCE(t.updated_on, t.created_on) AS updated_at
+          FROM ${TASKS_TABLE} t
+          LEFT JOIN ${TASK_PROJECTS_TABLE} p ON p.id = t.project_id
+          WHERE t.user_id = ?
+            AND (t.title LIKE ? ESCAPE '\\' OR COALESCE(t.description, '') LIKE ? ESCAPE '\\')
+          LIMIT ?
+        `,
+        [user.id, like, like, branchLimit]
+      ),
+      (row) => ({
+        app: "tasks",
+        table: TASKS_TABLE,
+        tableLabel: "Tasks",
+        id: row.id,
+        title: row.title,
+        context: [row.project_name, row.status, row.description].filter(Boolean).join(" · "),
+        url: `/app/tasks/task/${row.id}`,
+        updatedAt: row.updated_at,
+      })
+    );
+  }
+
+  if (canSearch("notes")) {
+    addRows(
+      all(
+        `
+          SELECT n.id, n.title, n.content_plain, n.notebook_id, n.subject_id,
+                 nb.name AS notebook_name, s.name AS subject_name,
+                 COALESCE(n.updated_on, n.created_on) AS updated_at
+          FROM ${NOTES_TABLE} n
+          LEFT JOIN ${NOTEBOOKS_TABLE} nb ON nb.id = n.notebook_id
+          LEFT JOIN ${NOTE_SUBJECTS_TABLE} s ON s.id = n.subject_id
+          WHERE n.user_id = ?
+            AND (n.title LIKE ? ESCAPE '\\' OR COALESCE(n.content_plain, '') LIKE ? ESCAPE '\\')
+          LIMIT ?
+        `,
+        [user.id, like, like, branchLimit]
+      ),
+      (row) => {
+        const params = new URLSearchParams();
+        if (row.notebook_id) params.set("notebook", row.notebook_id);
+        if (row.subject_id) params.set("subject", row.subject_id);
+        params.set("note", row.id);
+        return {
+          app: "notes",
+          table: NOTES_TABLE,
+          tableLabel: "Notes",
+          id: row.id,
+          title: row.title,
+          context: [row.notebook_name, row.subject_name, row.content_plain]
+            .filter(Boolean)
+            .join(" · "),
+          url: `/app/notes/browse?${params}`,
+          updatedAt: row.updated_at,
+        };
+      }
+    );
+  }
+
+  if (canSearch("decisions")) {
+    addRows(
+      all(
+        `
+          SELECT i.id, i.label, l.name AS list_name,
+                 COALESCE(i.updated_on, i.created_on) AS updated_at
+          FROM ${DECISION_ITEMS_TABLE} i
+          JOIN ${DECISION_LISTS_TABLE} l ON l.id = i.list_id
+          WHERE l.user_id = ? AND i.label LIKE ? ESCAPE '\\'
+          LIMIT ?
+        `,
+        [user.id, like, branchLimit]
+      ),
+      (row) => ({
+        app: "decisions",
+        table: DECISION_ITEMS_TABLE,
+        tableLabel: "Decision Items",
+        id: row.id,
+        title: row.label,
+        context: row.list_name,
+        url: `/app/decisions?item=${row.id}`,
+        updatedAt: row.updated_at,
+      })
+    );
+  }
+
+  if (canSearch("training")) {
+    addRows(
+      all(
+        `
+          SELECT id, name, muscle_group, equipment, notes,
+                 COALESCE(updated_on, created_on) AS updated_at
+          FROM ${TRAINING_EXERCISES_TABLE}
+          WHERE (user_id IS NULL OR user_id = ?)
+            AND (
+              name LIKE ? ESCAPE '\\'
+              OR COALESCE(muscle_group, '') LIKE ? ESCAPE '\\'
+              OR COALESCE(equipment, '') LIKE ? ESCAPE '\\'
+              OR COALESCE(notes, '') LIKE ? ESCAPE '\\'
+            )
+          LIMIT ?
+        `,
+        [user.id, like, like, like, like, branchLimit]
+      ),
+      (row) => ({
+        app: "training",
+        table: TRAINING_EXERCISES_TABLE,
+        tableLabel: "Exercises",
+        id: row.id,
+        title: row.name,
+        context: [row.muscle_group, row.equipment, row.notes].filter(Boolean).join(" · "),
+        url: `/app/training/exercises?exercise=${row.id}`,
+        updatedAt: row.updated_at,
+      })
+    );
+    for (const definition of [
+      {
+        table: TRAINING_PROGRAMS_TABLE,
+        label: "Programs",
+        url: (id) => `/app/training/programs/${id}`,
+      },
+      {
+        table: TRAINING_ROUTINES_TABLE,
+        label: "Routines",
+        url: (id) => `/app/training/routines/${id}`,
+      },
+      {
+        table: TRAINING_WORKOUTS_TABLE,
+        label: "Workouts",
+        url: (id) => `/app/training/workout/${id}`,
+      },
+    ]) {
+      addRows(
+        all(
+          `
+            SELECT id, name, notes, COALESCE(updated_on, created_on) AS updated_at
+            FROM ${definition.table}
+            WHERE user_id = ?
+              AND (name LIKE ? ESCAPE '\\' OR COALESCE(notes, '') LIKE ? ESCAPE '\\')
+            LIMIT ?
+          `,
+          [user.id, like, like, branchLimit]
+        ),
+        (row) => ({
+          app: "training",
+          table: definition.table,
+          tableLabel: definition.label,
+          id: row.id,
+          title: row.name,
+          context: row.notes,
+          url: definition.url(row.id),
+          updatedAt: row.updated_at,
+        })
+      );
+    }
+  }
+
+  if (canSearch("calendar")) {
+    addRows(
+      all(
+        `
+          SELECT id, title, notes, start_at, end_at,
+                 COALESCE(updated_on, created_on) AS updated_at
+          FROM ${CALENDAR_EVENTS_TABLE}
+          WHERE (COALESCE(is_private, 0) = 0 OR created_by = ?)
+            AND (title LIKE ? ESCAPE '\\' OR COALESCE(notes, '') LIKE ? ESCAPE '\\')
+          LIMIT ?
+        `,
+        [user.id, like, like, branchLimit]
+      ),
+      (row) => ({
+        app: "calendar",
+        table: CALENDAR_EVENTS_TABLE,
+        tableLabel: "Events",
+        id: row.id,
+        title: row.title,
+        context: [row.start_at, row.notes].filter(Boolean).join(" · "),
+        url: `/app/calendar?event=${row.id}&date=${encodeURIComponent(row.start_at)}`,
+        updatedAt: row.updated_at,
+      })
+    );
+    addRows(
+      all(
+        `
+          SELECT i.id, i.name, i.list_id, l.name AS list_name,
+                 COALESCE(i.updated_on, i.created_on) AS updated_at
+          FROM ${CALENDAR_SHOPPING_ITEMS_TABLE} i
+          JOIN ${CALENDAR_SHOPPING_LISTS_TABLE} l ON l.id = i.list_id
+          WHERE i.name LIKE ? ESCAPE '\\' OR l.name LIKE ? ESCAPE '\\'
+          LIMIT ?
+        `,
+        [like, like, branchLimit]
+      ),
+      (row) => ({
+        app: "calendar",
+        table: CALENDAR_SHOPPING_ITEMS_TABLE,
+        tableLabel: "Shopping Items",
+        id: row.id,
+        title: row.name,
+        context: row.list_name,
+        url: `/app/calendar?shopping=1&list=${row.list_id}&item=${row.id}`,
+        updatedAt: row.updated_at,
+      })
+    );
+  }
+
+  if (canSearch("home_inventory")) {
+    addRows(
+      all(
+        `
+          SELECT i.id, i.name, i.description, i.brand, l.name AS location_name,
+                 COALESCE(i.updated_on, i.created_on) AS updated_at
+          FROM ${HOME_INVENTORY_ITEMS_TABLE} i
+          LEFT JOIN ${HOME_INVENTORY_LOCATIONS_TABLE} l ON l.id = i.location_id
+          WHERE i.name LIKE ? ESCAPE '\\'
+            OR COALESCE(i.description, '') LIKE ? ESCAPE '\\'
+            OR COALESCE(i.brand, '') LIKE ? ESCAPE '\\'
+            OR COALESCE(l.name, '') LIKE ? ESCAPE '\\'
+          LIMIT ?
+        `,
+        [like, like, like, like, branchLimit]
+      ),
+      (row) => ({
+        app: "home_inventory",
+        table: HOME_INVENTORY_ITEMS_TABLE,
+        tableLabel: "Items",
+        id: row.id,
+        title: row.name,
+        context: [row.brand, row.location_name, row.description].filter(Boolean).join(" · "),
+        url: `/app/home_inventory?item=${row.id}`,
+        updatedAt: row.updated_at,
+      })
+    );
+    addRows(
+      all(
+        `
+          SELECT id, name, description, COALESCE(updated_on, created_on) AS updated_at
+          FROM ${HOME_INVENTORY_LOCATIONS_TABLE}
+          WHERE name LIKE ? ESCAPE '\\' OR COALESCE(description, '') LIKE ? ESCAPE '\\'
+          LIMIT ?
+        `,
+        [like, like, branchLimit]
+      ),
+      (row) => ({
+        app: "home_inventory",
+        table: HOME_INVENTORY_LOCATIONS_TABLE,
+        tableLabel: "Locations",
+        id: row.id,
+        title: row.name,
+        context: row.description,
+        url: `/app/home_inventory?location=${row.id}`,
+        updatedAt: row.updated_at,
+      })
+    );
+  }
+
+  hits.sort((a, b) => {
+    if (b.rank !== a.rank) return b.rank - a.rank;
+    const dateCompare = String(b.updated_at ?? "").localeCompare(String(a.updated_at ?? ""));
+    if (dateCompare !== 0) return dateCompare;
+    return String(a.title).localeCompare(String(b.title));
+  });
+
+  const results = hits.slice(safeOffset, safeOffset + safeLimit);
+  return {
+    query: q,
+    results,
+    total: hits.length,
+    limit: safeLimit,
+    offset: safeOffset,
+    has_more: safeOffset + results.length < hits.length,
+  };
+};
+
 const userCanEditCalendar = (user) => {
   if (!user) return false;
   if (isSessionAdmin(user)) return true;
@@ -3872,6 +4476,150 @@ const assertUserCanAccessTable = (user, tableName, { forWrite = false } = {}) =>
   }
 };
 
+const REPORT_DENIED_TABLES = new Set([
+  USERS_TABLE,
+  USER_ROLES_TABLE,
+  APPLICATIONS_TABLE,
+  SYSTEM_DICTIONARY_TABLE,
+  SYSTEM_DELETES_TABLE,
+  SYSTEM_NAVIGATION_TABLE,
+  SYSTEM_LOGS_TABLE,
+  DASHBOARD_REPORTS_TABLE,
+  DASHBOARDS_TABLE,
+  DASHBOARD_LAYOUT_ITEMS_TABLE,
+  USER_FAVORITES_TABLE,
+  USER_PREFERENCES_TABLE,
+]);
+
+const REPORT_SECRET_FIELDS = ["password", "password_hash", "site_password"];
+const REPORT_DENIED_SQL_IDENTIFIERS = [
+  "sqlite_master",
+  "sqlite_schema",
+  "sqlite_temp_master",
+  "sqlite_temp_schema",
+  "pragma_table_info",
+  "pragma_table_xinfo",
+  "pragma_database_list",
+  "pragma_index_list",
+  "pragma_index_info",
+  "pragma_foreign_key_list",
+  "dbstat",
+  "sqlite_dbpage",
+  "sqlite_stmt",
+];
+
+const escapeRegExp = (value) => String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+const sqlMentionsIdentifier = (sql, identifier) => {
+  const escaped = escapeRegExp(identifier);
+  return new RegExp(
+    `(^|[^a-zA-Z0-9_])(?:["\`\\[])?${escaped}(?:["\`\\]])?(?=$|[^a-zA-Z0-9_])`,
+    "i"
+  ).test(sql);
+};
+
+const getReportReferencedTables = (sql) =>
+  getTables().filter((tableName) => sqlMentionsIdentifier(sql, tableName));
+
+const reportTableBelongsToApplication = (tableName, application) => {
+  if (
+    (tableName === ACCOUNTS_TABLE || tableName === ACCOUNT_TYPES_TABLE) &&
+    (application === "budget" || application === "site-tracker")
+  ) {
+    return true;
+  }
+  return getTableApplication(tableName) === application;
+};
+
+export const assertReportSqlAccess = (user, application, sql) => {
+  if (!userCanAccessApp(user, application)) {
+    throw new Error(`Access denied: ${application} application access is required.`);
+  }
+
+  const normalized = assertSelectSql(sql);
+  for (const metadataName of REPORT_DENIED_SQL_IDENTIFIERS) {
+    if (sqlMentionsIdentifier(normalized, metadataName)) {
+      throw new Error("Access denied: SQLite schema metadata is not available to reports.");
+    }
+  }
+  for (const fieldName of REPORT_SECRET_FIELDS) {
+    if (sqlMentionsIdentifier(normalized, fieldName)) {
+      throw new Error("Access denied: secret password fields are not available to reports.");
+    }
+  }
+
+  const referencedTables = getReportReferencedTables(normalized);
+  for (const tableName of referencedTables) {
+    if (REPORT_DENIED_TABLES.has(tableName) || tableName.startsWith("system_")) {
+      throw new Error(`Access denied: ${tableName} is not available to reports.`);
+    }
+    if (!reportTableBelongsToApplication(tableName, application)) {
+      throw new Error(
+        `Access denied: ${tableName} does not belong to the ${application} application.`
+      );
+    }
+    try {
+      assertUserCanAccessTable(user, tableName, { forWrite: false });
+    } catch {
+      throw new Error(`Access denied: you cannot read ${tableName}.`);
+    }
+  }
+
+  let statement;
+  try {
+    const writeOpcodes = new Set([
+      "OpenWrite",
+      "CreateBtree",
+      "Destroy",
+      "Clear",
+      "SetCookie",
+      "Vacuum",
+    ]);
+    const plan = db.prepare(`EXPLAIN ${normalized}`).all();
+    if (plan.some((step) => writeOpcodes.has(step.opcode))) {
+      throw new Error("Only one read-only SELECT or WITH statement is allowed.");
+    }
+    statement = db.prepare(normalized);
+  } catch (error) {
+    if (error.message === "Only one read-only SELECT or WITH statement is allowed.") {
+      throw error;
+    }
+    throw new Error(`Invalid report SQL: ${error.message}`, { cause: error });
+  }
+
+  return { normalized, statement, referencedTables };
+};
+
+export const runReportSql = (user, application, sql) => {
+  const { statement, referencedTables } = assertReportSqlAccess(user, application, sql);
+  const columns = statement
+    .columns()
+    .filter(
+      ({ name, column }) =>
+        !REPORT_SECRET_FIELDS.includes(name) && !REPORT_SECRET_FIELDS.includes(column)
+    )
+    .map(({ name, column, table, type }) => ({
+      name,
+      source_column: column || null,
+      source_table: table || null,
+      type: type || null,
+    }));
+  const rows = [];
+  let truncated = false;
+  for (const row of statement.iterate()) {
+    if (rows.length >= 1000) {
+      truncated = true;
+      break;
+    }
+    const safeRow = { ...row };
+    for (const fieldName of REPORT_SECRET_FIELDS) {
+      delete safeRow[fieldName];
+    }
+    rows.push(safeRow);
+  }
+  return { rows, columns, referenced_tables: referencedTables, truncated };
+};
+
 const getTablesForUser = (user) => {
   const tables = getTables();
   return tables.filter((tableName) => {
@@ -3895,6 +4643,17 @@ const getTablesForUser = (user) => {
   });
 };
 
+const userCanAccessReports = (user) =>
+  all(
+    `
+      SELECT name
+      FROM ${APPLICATIONS_TABLE}
+      WHERE COALESCE(is_enabled, 1) != 0
+        AND name != 'troublehub'
+      ORDER BY name
+    `
+  ).some((application) => userCanAccessApp(user, application.name));
+
 const getNavigationForUser = (user) => {
   const items = all(
     `
@@ -3910,6 +4669,9 @@ const getNavigationForUser = (user) => {
     }
 
     if (item.nav_section === "apps") {
+      if (item.application === "reports") {
+        return userCanAccessReports(user);
+      }
       return item.application && userCanAccessApp(user, item.application);
     }
 
@@ -4551,6 +5313,8 @@ const { ensureTroublehubSchema, handleTroublehubApi, TROUBLEHUB_IMAGES_DIR } =
     writeSystemLog,
   });
 runSchemaStep("troublehub", ensureTroublehubSchema);
+runSchemaStep("post_app_dictionary", ensureSystemDictionary);
+runSchemaStep("troublehub_dictionary_ownership", ensureTroublehubSchema);
 
 if (SCHEMA_LOG_VERBOSE) {
   try {
@@ -5941,6 +6705,7 @@ const validateTransactionPayload = ({
   transaction_date,
   source_account_id,
   user_id,
+  check_number,
 }, options = {}) => {
   const { hasSplits = false } = options;
 
@@ -5969,9 +6734,10 @@ const validateTransactionPayload = ({
     throw new Error("Pay-from account must be different from the bill account.");
   }
 
+  const accountTypeName = getAccountTypeNameForAccountId(account_id);
+
   if (!source_account_id && !hasSplits) {
     const categoryType = getCategoryType(category_id);
-    const accountTypeName = getAccountTypeNameForAccountId(account_id);
 
     if (!isLiabilityAccountTypeName(accountTypeName)) {
       if (categoryType === "income" && numericAmount < 0) {
@@ -5995,6 +6761,10 @@ const validateTransactionPayload = ({
     description: null,
     transaction_date,
     source_account_id: source_account_id ? Number(source_account_id) : null,
+    check_number:
+      accountTypeName === "Bank Checking" && String(check_number ?? "").trim()
+        ? String(check_number).trim().slice(0, 50)
+        : null,
   };
 };
 
@@ -6008,6 +6778,7 @@ const insertBudgetTransactionRecord = (data, payload, userId, transactionKind, l
       payee_id: payload.payee_id ? Number(payload.payee_id) : null,
       amount: data.amount,
       description: payload.description?.trim() || null,
+      check_number: data.check_number,
       transaction_date: data.transaction_date,
       transaction_kind: transactionKind,
       linked_transaction_id: linkedTransactionId,
@@ -6423,6 +7194,7 @@ const updateBudgetTransaction = (id, payload, userId = null) =>
           payee_id: payeeId,
           amount: data.amount,
           description,
+          check_number: data.check_number,
           transaction_date: data.transaction_date,
           transaction_kind: splitLines ? "split" : "standard",
           linked_transaction_id: null,
@@ -9818,6 +10590,20 @@ export function sqliteApiPlugin() {
             return;
           }
 
+          if (req.method === "GET" && requestPath === "/api/search") {
+            const user = getSessionUser(req);
+            if (!user) {
+              json(res, 401, { error: "Unauthorized." });
+              return;
+            }
+            const searchUrl = new URL(req.url, "http://localhost");
+            const query = searchUrl.searchParams.get("q") ?? "";
+            const limit = Number(searchUrl.searchParams.get("limit")) || 40;
+            const offset = Number(searchUrl.searchParams.get("offset")) || 0;
+            json(res, 200, runGlobalSearch(user, { query, limit, offset }));
+            return;
+          }
+
           if (req.method === "POST" && req.url === "/api/admin/navigation/reseed") {
             const actingUser = requireAdmin(req, res);
             if (!actingUser) return;
@@ -10501,6 +11287,19 @@ export function sqliteApiPlugin() {
           if (req.url.startsWith("/api/dashboard/reports")) {
             const reportUrl = new URL(req.url, "http://localhost");
 
+            if (req.method === "POST" && reportUrl.pathname === "/api/dashboard/reports/run") {
+              const body = await readBody(req);
+              const actingUser = getSessionUser(req);
+              const application = body.application?.trim() || "budget";
+              try {
+                json(res, 200, runReportSql(actingUser, application, body.sql));
+              } catch (reportError) {
+                const message = reportError?.message || "Unable to run report.";
+                json(res, message.startsWith("Access denied:") ? 403 : 400, { error: message });
+              }
+              return;
+            }
+
             if (req.method === "GET" && reportUrl.pathname === "/api/dashboard/reports") {
               const application = reportUrl.searchParams.get("application")?.trim() || "budget";
               const sessionUser = getSessionUser(req);
@@ -10545,7 +11344,13 @@ export function sqliteApiPlugin() {
                 return;
               }
 
-              assertSelectSql(sql);
+              try {
+                assertReportSqlAccess(actingUser, application, sql);
+              } catch (reportError) {
+                const message = reportError?.message || "Unable to validate report SQL.";
+                json(res, message.startsWith("Access denied:") ? 403 : 400, { error: message });
+                return;
+              }
 
               const result = insertAuditedRow(
                 DASHBOARD_REPORTS_TABLE,
@@ -10569,10 +11374,24 @@ export function sqliteApiPlugin() {
             const reportMatch = reportUrl.pathname.match(/^\/api\/dashboard\/reports\/(\d+)$/);
             if (reportMatch) {
               const reportId = Number(reportMatch[1]);
+              const existingReport = all(
+                `SELECT id, application FROM ${DASHBOARD_REPORTS_TABLE} WHERE id = ? LIMIT 1`,
+                [reportId]
+              )[0];
 
               if (req.method === "PUT") {
                 const body = await readBody(req);
                 const actingUser = getSessionUser(req);
+                if (!existingReport) {
+                  json(res, 404, { error: "Report not found." });
+                  return;
+                }
+                if (!userCanAccessApp(actingUser, existingReport.application)) {
+                  json(res, 403, {
+                    error: `Access denied: ${existingReport.application} application access is required.`,
+                  });
+                  return;
+                }
                 const name = body.name?.trim();
                 const widgetKind = body.widget_kind;
                 const sql = body.sql?.trim();
@@ -10588,7 +11407,13 @@ export function sqliteApiPlugin() {
                   return;
                 }
 
-                assertSelectSql(sql);
+                try {
+                  assertReportSqlAccess(actingUser, existingReport.application, sql);
+                } catch (reportError) {
+                  const message = reportError?.message || "Unable to validate report SQL.";
+                  json(res, message.startsWith("Access denied:") ? 403 : 400, { error: message });
+                  return;
+                }
 
                 updateAuditedRow(
                   DASHBOARD_REPORTS_TABLE,
@@ -10611,6 +11436,17 @@ export function sqliteApiPlugin() {
               }
 
               if (req.method === "DELETE") {
+                const actingUser = getSessionUser(req);
+                if (!existingReport) {
+                  json(res, 404, { error: "Report not found." });
+                  return;
+                }
+                if (!userCanAccessApp(actingUser, existingReport.application)) {
+                  json(res, 403, {
+                    error: `Access denied: ${existingReport.application} application access is required.`,
+                  });
+                  return;
+                }
                 run(`DELETE FROM ${DASHBOARD_REPORTS_TABLE} WHERE id = ?`, [reportId]);
                 run(`DELETE FROM ${DASHBOARD_LAYOUT_ITEMS_TABLE} WHERE report_key = ?`, [
                   `custom:${reportId}`,

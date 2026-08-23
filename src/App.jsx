@@ -34,10 +34,13 @@ import AppIdePage from "./pages/AppIdePage";
 import AppHomeRouter from "./pages/AppHomeRouter";
 import BudgetHomePage from "./pages/BudgetHomePage";
 import ErrorPage from "./pages/ErrorPage";
+import GlobalSearchPage from "./pages/GlobalSearchPage";
 import LoginPage from "./pages/LoginPage";
 import ChangePasswordPage from "./pages/ChangePasswordPage";
 import ReportCenterPage from "./pages/ReportCenterPage";
+import ReportBuilderPage from "./pages/ReportBuilderPage";
 import ReportDetailPage from "./pages/ReportDetailPage";
+import ReportsPage from "./pages/ReportsPage";
 import TableFormRouter from "./pages/TableFormRouter";
 import TableListPage from "./pages/TableListPage";
 import TransferFormPage from "./pages/TransferFormPage";
@@ -150,6 +153,8 @@ function ProtectedLayout() {
         <Routes>
           <Route path="/" element={<AppNavigatorPage />} />
           <Route path="/access-denied" element={<AccessDeniedPage />} />
+          <Route path="/search" element={<GlobalSearchPage />} />
+          <Route path="/reports" element={<ReportsPage />} />
 
           <Route path="/docs" element={<DocsHomePage />} />
           <Route path="/docs/:appName" element={<DocsAppPage />} />
@@ -160,6 +165,8 @@ function ProtectedLayout() {
           <Route element={<BudgetGuard />}>
             <Route path="/budget" element={<BudgetHomePage />} />
             <Route path="/budget/reports" element={<ReportCenterPage />} />
+            <Route path="/budget/reports/new" element={<ReportBuilderPage />} />
+            <Route path="/budget/reports/custom/:reportId/edit" element={<ReportBuilderPage />} />
             <Route path="/budget/reports/:reportKey" element={<ReportDetailPage />} />
             <Route path="/budget/accounts/:accountId/register" element={<AccountRegisterPage />} />
             <Route path="/budget/transfers/new" element={<TransferFormPage />} />
@@ -202,6 +209,8 @@ function ProtectedLayout() {
             <Route path="fantasies/play" element={<TroubleHubAppGuard><FantasiesPlayPage /></TroubleHubAppGuard>} />
             <Route path="fantasies" element={<TroubleHubAppGuard><FantasiesHomePage /></TroubleHubAppGuard>} />
             <Route path="reports" element={<ReportCenterPage />} />
+            <Route path="reports/new" element={<ReportBuilderPage />} />
+            <Route path="reports/custom/:reportId/edit" element={<ReportBuilderPage />} />
             <Route path="reports/:reportKey" element={<ReportDetailPage />} />
             <Route path="accounts/:accountId/register" element={<AccountRegisterPage />} />
             <Route path="transfers/new" element={<TransferFormPage />} />

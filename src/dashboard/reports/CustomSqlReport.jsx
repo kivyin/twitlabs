@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
-import { runQuery } from "../../api/dbApi";
+import { runDashboardReport } from "../../api/dashboardApi";
 import ReportSkeleton from "../ReportSkeleton";
 import { formatCurrency } from "../../utils/format";
 import EChart from "../../components/EChart";
 import { buildChartOption, isChartKind, parseChartConfig } from "../../utils/chartOptions";
+
+const EMPTY_COLUMNS = [];
 
 function pickNumericColumn(row, preferredColumn) {
   if (preferredColumn && row[preferredColumn] !== undefined) {
@@ -16,12 +18,22 @@ function pickNumericColumn(row, preferredColumn) {
   });
 }
 
-function CustomSqlReport({ report, fullPage = false }) {
-  const [rows, setRows] = useState([]);
+function CustomSqlReport({
+  report,
+  fullPage = false,
+  previewRows = null,
+  previewColumns = EMPTY_COLUMNS,
+}) {
+  const [rows, setRows] = useState(previewRows ?? []);
+  const [resultColumns, setResultColumns] = useState(previewColumns);
   const [error, setError] = useState("");
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(previewRows === null);
 
   useEffect(() => {
+    if (previewRows !== null) {
+      return undefined;
+    }
+
     let active = true;
 
     async function load() {
@@ -29,8 +41,14 @@ function CustomSqlReport({ report, fullPage = false }) {
       setError("");
 
       try {
-        const result = await runQuery({ sql: report.sql });
-        if (active) setRows(result.rows ?? []);
+        const result = await runDashboardReport({
+          application: report.application,
+          sql: report.sql,
+        });
+        if (active) {
+          setRows(result.rows ?? []);
+          setResultColumns((result.columns ?? []).map((column) => column.name));
+        }
       } catch (loadError) {
         if (active) setError(loadError.message);
       } finally {
@@ -42,23 +60,25 @@ function CustomSqlReport({ report, fullPage = false }) {
     return () => {
       active = false;
     };
-  }, [report.sql]);
+  }, [previewColumns, previewRows, report.application, report.sql]);
 
+  const displayRows = previewRows ?? rows;
+  const displayResultColumns = previewRows !== null ? previewColumns : resultColumns;
   const columns = useMemo(() => {
-    if (rows.length === 0) return [];
-    return Object.keys(rows[0]);
-  }, [rows]);
+    if (displayResultColumns.length > 0) return displayResultColumns;
+    return displayRows.length > 0 ? Object.keys(displayRows[0]) : [];
+  }, [displayResultColumns, displayRows]);
 
-  if (loading) return <ReportSkeleton lines={4} />;
+  if (previewRows === null && loading) return <ReportSkeleton lines={4} />;
   if (error) return <p className="report-error">{error}</p>;
 
-  if (rows.length === 0) {
+  if (displayRows.length === 0) {
     return <div className="report-empty"><p>Query returned no rows.</p></div>;
   }
 
   if (isChartKind(report.widget_kind)) {
     const config = parseChartConfig(report.chart_config);
-    const option = buildChartOption(report.widget_kind, rows, config);
+    const option = buildChartOption(report.widget_kind, displayRows, config);
     if (!option) {
       return <p className="report-error">No numeric column found to chart.</p>;
     }
@@ -66,7 +86,7 @@ function CustomSqlReport({ report, fullPage = false }) {
   }
 
   if (report.widget_kind === "stat") {
-    const row = rows[0];
+    const row = displayRows[0];
     const valueColumn = pickNumericColumn(row, report.value_column);
     const value = valueColumn ? row[valueColumn] : Object.values(row)[0];
 
@@ -83,15 +103,15 @@ function CustomSqlReport({ report, fullPage = false }) {
 
   if (report.widget_kind === "bars") {
     const labelColumn = report.label_column || columns[0];
-    const valueColumn = report.value_column || pickNumericColumn(rows[0], null);
-    const maxValue = rows.reduce(
+    const valueColumn = report.value_column || pickNumericColumn(displayRows[0], null);
+    const maxValue = displayRows.reduce(
       (max, row) => Math.max(max, Number(row[valueColumn]) || 0),
       0
     );
 
     return (
       <ul className="bar-chart-report">
-        {rows.map((row, index) => {
+        {displayRows.map((row, index) => {
           const value = Number(row[valueColumn]) || 0;
           const width = maxValue > 0 ? Math.max((value / maxValue) * 100, 4) : 0;
 
@@ -111,20 +131,30 @@ function CustomSqlReport({ report, fullPage = false }) {
     );
   }
 
+  const config = parseChartConfig(report.chart_config);
+  const visibleColumns =
+    report.widget_kind === "list" && Array.isArray(config.visibleColumns)
+      ? config.visibleColumns.filter((column) => columns.includes(column))
+      : columns;
+  const displayColumns = visibleColumns.length > 0 ? visibleColumns : columns;
+
   return (
     <div className="report-table-wrap">
-      <table className="report-table">
+      {report.widget_kind === "list" && config.title && (
+        <h3 className="report-list-title">{config.title}</h3>
+      )}
+      <table className={`report-table${report.widget_kind === "list" ? " report-list" : ""}`}>
         <thead>
           <tr>
-            {columns.map((column) => (
+            {displayColumns.map((column) => (
               <th key={column}>{column}</th>
             ))}
           </tr>
         </thead>
         <tbody>
-          {rows.map((row, index) => (
+          {displayRows.map((row, index) => (
             <tr key={index}>
-              {columns.map((column) => (
+              {displayColumns.map((column) => (
                 <td key={column}>{row[column] === null ? "—" : String(row[column])}</td>
               ))}
             </tr>

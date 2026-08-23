@@ -40,7 +40,7 @@ function paletteFromCss(fallback) {
 }
 
 export function getChartPalette(themeName = "") {
-  if (themeName === "lcars") {
+  if (themeName === "lcars" || themeName === "lcars-v2") {
     return paletteFromCss(LCARS_CHART_PALETTE);
   }
   if (themeName === "studiotwitty" || themeName === "ironman") {

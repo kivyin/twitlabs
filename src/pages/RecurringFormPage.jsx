@@ -3,6 +3,7 @@ import { useParams } from "react-router-dom";
 import { insertRow, runQuery, selectRows, updateRows } from "../api/dbApi";
 import FormActions from "../components/FormActions";
 import PageHeader from "../components/PageHeader";
+import FieldHint from "../components/ui/FieldHint";
 import { useAuth } from "../context/AuthContext";
 import { useBrowseReturn } from "../hooks/useBrowseReturn";
 import { buildForeignKeyOptionLabel } from "../utils/tableForm";
@@ -165,6 +166,12 @@ function RecurringFormPage() {
       ? (cashEntryMode === "deposit" ? 1 : -1) * Math.abs(previewNumeric)
       : previewNumeric;
   const amountClassName = getSignedAmountClass(signedPreviewAmount);
+  const signedAmountHint =
+    formData.amount !== "" && Number.isFinite(signedPreviewAmount)
+      ? `Will post as ${signedPreviewAmount.toFixed(2)} (${
+          cashEntryMode === "deposit" ? "deposit" : "withdrawal"
+        }).`
+      : "";
 
   const payload = useMemo(() => ({
     user_id: Number(formData.user_id),
@@ -320,7 +327,10 @@ function RecurringFormPage() {
             </fieldset>
 
             <label>
-              Amount
+              <span className="field-label-row">
+                <span>Amount</span>
+                <FieldHint text={[amountHint, signedAmountHint].filter(Boolean).join(" ")} />
+              </span>
               <input
                 type="number"
                 inputMode="decimal"
@@ -331,16 +341,6 @@ function RecurringFormPage() {
                 className={amountClassName || undefined}
                 required
               />
-              {amountHint && <span className="field-hint">{amountHint}</span>}
-              {formData.amount !== "" && Number.isFinite(signedPreviewAmount) ? (
-                <span className="field-hint">
-                  Will post as{" "}
-                  <strong className={amountClassName || undefined}>
-                    {signedPreviewAmount.toFixed(2)}
-                  </strong>{" "}
-                  ({cashEntryMode === "deposit" ? "deposit" : "withdrawal"}).
-                </span>
-              ) : null}
             </label>
 
             <label>
@@ -398,9 +398,11 @@ function RecurringFormPage() {
             </label>
 
             <label className="form-field-full">
-              End date
+              <span className="field-label-row">
+                <span>End date</span>
+                <FieldHint text="Optional. The schedule stops after this date." />
+              </span>
               <input type="date" value={formData.end_date} onChange={(event) => handleChange("end_date", event.target.value)} />
-              <span className="field-hint">Optional. The schedule stops after this date.</span>
             </label>
 
             <label className="checkbox-field form-field-full">

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   createCalendarEvent,
   deleteCalendarEvent,
@@ -36,12 +36,20 @@ const SLOT_MINUTES = 30;
 function CalendarPage() {
   const { user, isAdmin, logout } = useAuth();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const linkedEventId = searchParams.get("event");
+  const linkedDate = searchParams.get("date");
+  const linkedShoppingListId = searchParams.get("list");
+  const linkedShoppingItemId = searchParams.get("item");
   const roles = user?.roles ?? [];
   const canEdit = userHasCalendarEditAccess(roles, isAdmin);
   const viewOnly = userHasCalendarViewOnly(roles, isAdmin);
 
   const [viewMode, setViewMode] = useState("week");
-  const [anchorDate, setAnchorDate] = useState(() => startOfDay(new Date()));
+  const [anchorDate, setAnchorDate] = useState(() => {
+    const parsed = linkedDate ? new Date(linkedDate) : null;
+    return startOfDay(parsed && !Number.isNaN(parsed.getTime()) ? parsed : new Date());
+  });
   const [events, setEvents] = useState([]);
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -53,6 +61,7 @@ function CalendarPage() {
 
   const gridRef = useRef(null);
   const didScrollRef = useRef(false);
+  const openedLinkedEventRef = useRef(null);
 
   const weekStart = useMemo(() => startOfWeek(anchorDate, 0), [anchorDate]);
   const dayCount = viewMode === "day" ? 1 : 7;
@@ -100,6 +109,23 @@ function CalendarPage() {
   useEffect(() => {
     void loadEvents({ showLoading: true });
   }, [loadEvents]);
+
+  useEffect(() => {
+    if (!linkedEventId || openedLinkedEventRef.current === linkedEventId) return;
+    const event = events.find((entry) => String(entry.id) === String(linkedEventId));
+    if (!event) return;
+    openedLinkedEventRef.current = linkedEventId;
+    // The URL is the external source of truth for this one-time modal sync.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setModal({ open: true, mode: "edit", event, defaults: null });
+  }, [events, linkedEventId]);
+
+  useEffect(() => {
+    if (searchParams.get("shopping") === "1") {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setShoppingOpen(true);
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     let cancelled = false;
@@ -183,6 +209,17 @@ function CalendarPage() {
 
   const openEvent = (event) => {
     setModal({ open: true, mode: "edit", event, defaults: null });
+  };
+
+  const clearLinkedModalParams = () => {
+    const next = new URLSearchParams(searchParams);
+    next.delete("event");
+    next.delete("date");
+    next.delete("shopping");
+    next.delete("list");
+    next.delete("item");
+    next.delete("item");
+    setSearchParams(next, { replace: true });
   };
 
   const handleSave = async (payload) => {
@@ -474,12 +511,23 @@ function CalendarPage() {
         }
         currentUserId={user?.id}
         saving={saving}
-        onClose={() => setModal({ open: false, mode: "create", event: null, defaults: null })}
+        onClose={() => {
+          setModal({ open: false, mode: "create", event: null, defaults: null });
+          clearLinkedModalParams();
+        }}
         onSave={handleSave}
         onDelete={handleDelete}
       />
 
-      <CalendarShoppingModal open={shoppingOpen} onClose={() => setShoppingOpen(false)} />
+      <CalendarShoppingModal
+        open={shoppingOpen}
+        preferredListId={linkedShoppingListId}
+        highlightedItemId={linkedShoppingItemId}
+        onClose={() => {
+          setShoppingOpen(false);
+          clearLinkedModalParams();
+        }}
+      />
     </div>
   );
 

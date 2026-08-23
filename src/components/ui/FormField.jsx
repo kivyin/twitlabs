@@ -1,20 +1,26 @@
 /**
  * Consistent label/input/hint/error layout for dictionary-driven forms.
  */
+import FieldHint from "./FieldHint";
+
 function FormField({ label, htmlFor, required = false, hint, error, children, className = "" }) {
   const errorId = error && htmlFor ? `${htmlFor}-error` : undefined;
-  const hintId = hint && htmlFor ? `${htmlFor}-hint` : undefined;
 
   return (
     <div className={["form-field", className].filter(Boolean).join(" ")}>
       {label && (
         <label htmlFor={htmlFor}>
-          {label}
-          {required && (
-            <span className="field-required" aria-hidden="true">
-              *
+          <span className="field-label-row">
+            <span>
+              {label}
+              {required && (
+                <span className="field-required" aria-hidden="true">
+                  *
+                </span>
+              )}
             </span>
-          )}
+            {!error && hint ? <FieldHint text={hint} /> : null}
+          </span>
         </label>
       )}
       {children}
@@ -22,10 +28,8 @@ function FormField({ label, htmlFor, required = false, hint, error, children, cl
         <p id={errorId} className="field-error" role="alert">
           {error}
         </p>
-      ) : hint ? (
-        <p id={hintId} className="field-hint">
-          {hint}
-        </p>
+      ) : hint && !label ? (
+        <FieldHint text={hint} />
       ) : null}
     </div>
   );

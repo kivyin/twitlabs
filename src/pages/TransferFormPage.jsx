@@ -11,6 +11,7 @@ import {
 import ConfirmModal from "../components/common/ConfirmModal";
 import FormActions from "../components/FormActions";
 import PageHeader from "../components/PageHeader";
+import FieldHint from "../components/ui/FieldHint";
 import { useAuth } from "../context/AuthContext";
 import { useBrowseReturn } from "../hooks/useBrowseReturn";
 import { formatCurrency } from "../utils/format";
@@ -359,7 +360,10 @@ function TransferFormPage() {
 
             <div className="form-grid two-col">
               <label>
-                Amount
+                <span className="field-label-row">
+                  <span>Amount</span>
+                  <FieldHint text="Always enter a positive amount." />
+                </span>
                 <input
                   type="number"
                   step="0.01"
@@ -368,7 +372,6 @@ function TransferFormPage() {
                   onChange={(event) => handleChange("amount", event.target.value)}
                   required
                 />
-                <span className="field-hint">Always enter a positive amount.</span>
               </label>
 
               <label>
@@ -425,12 +428,13 @@ function TransferFormPage() {
 
             {transferPreview && (
               <div className="transfer-preview" role="status">
-                <strong>Preview</strong>
-                <p>{transferPreview.label}</p>
-                <span className="field-hint">
-                  This will post as a {transferPreview.kindLabel} with linked entries on both
-                  accounts.
+                <span className="field-label-row">
+                  <strong>Preview</strong>
+                  <FieldHint
+                    text={`This will post as a ${transferPreview.kindLabel} with linked entries on both accounts.`}
+                  />
                 </span>
+                <p>{transferPreview.label}</p>
               </div>
             )}
             </FormActions>

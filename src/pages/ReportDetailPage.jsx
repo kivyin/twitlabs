@@ -20,8 +20,6 @@ function ReportDetailPage() {
     }
 
     let active = true;
-    setLoading(true);
-    setError("");
 
     getDashboardReports(appName)
       .then((reports) => {
@@ -47,7 +45,7 @@ function ReportDetailPage() {
   const title = builtinReport?.title ?? customReport?.name ?? "Report";
   const description = builtinReport?.description ?? customReport?.description ?? "";
 
-  let content = null;
+  let content;
   if (parsed.source === "builtin") {
     if (!builtinReport) {
       content = <p className="error">Report not found.</p>;
@@ -77,9 +75,16 @@ function ReportDetailPage() {
         title={title}
         subtitle={description}
         actions={
-          <Link to={`/app/${appName}/reports`} className="button-primary">
-            All reports
-          </Link>
+          <>
+            {customReport && (
+              <Link to={`/app/${appName}/reports/custom/${customReport.id}/edit`}>
+                Edit report
+              </Link>
+            )}
+            <Link to={`/app/${appName}/reports`} className="button-primary">
+              All reports
+            </Link>
+          </>
         }
       />
 

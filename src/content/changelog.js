@@ -4,6 +4,22 @@
  */
 export const CHANGELOG = [
   {
+    version: "1.20",
+    date: "2026-08-22",
+    title: "Global search, reporting, and LCARS V2",
+    highlights: [
+      "Secure global search across enabled applications with permission-aware results, ranking, pagination, and exact-record deep links",
+      "Dedicated Tableau-inspired report builder with Data and Visualization workflows, secure application-scoped SQL, list reports, and configurable charts",
+      "Reports promoted to a top-level application with report centers, editing routes, and preview validation before saving",
+      "Application-level enablement and stricter TroubleHub ownership rules keep disabled or unauthorized apps and vault data out of navigation, search, and schema tools",
+      "Budget transactions support optional check numbers for checking accounts and compact label-adjacent field hints",
+      "Transaction attachments moved into the command bar with a space-saving attachment manager",
+      "New LCARS V2 theme with a three-column shell, contextual command rail, active-app submenu deck, larger telemetry, responsive navigation, and preserved application functionality",
+      "Classic LCARS search and favorite styling improved with capsule search actions, visible custom icons, and favorite-color backgrounds",
+      "Calendar shopping search results now deep-link to the exact list and highlighted item",
+    ],
+  },
+  {
     version: "1.12.0",
     date: "2026-08-10",
     title: "TroubleHub vault + Match Mischief",

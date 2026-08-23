@@ -19,6 +19,7 @@ import {
   TROUBLEHUB_FANTASY_GAME_TABLE,
   TROUBLEHUB_FANTASY_PICKS_TABLE,
   TROUBLEHUB_FANTASY_ROUNDS_TABLE,
+  TROUBLEHUB_FANTASY_SESSIONS_TABLE,
 } from "./vite.troublehub-fantasies-api.js";
 
 export const TROUBLEHUB_MATCH_CARDS_TABLE = "troublehub_match_cards";
@@ -30,10 +31,21 @@ export {
   TROUBLEHUB_FANTASY_GAME_TABLE,
   TROUBLEHUB_FANTASY_PICKS_TABLE,
   TROUBLEHUB_FANTASY_ROUNDS_TABLE,
+  TROUBLEHUB_FANTASY_SESSIONS_TABLE,
 };
 
 export const TROUBLEHUB_APP = "troublehub";
 export const TROUBLEHUB_USER_ROLE = "troublehub_user";
+export const TROUBLEHUB_TABLES = [
+  TROUBLEHUB_MATCH_CARDS_TABLE,
+  TROUBLEHUB_MATCH_ANSWERS_TABLE,
+  TROUBLEHUB_NOTIFICATIONS_TABLE,
+  TROUBLEHUB_FANTASY_CARDS_TABLE,
+  TROUBLEHUB_FANTASY_SESSIONS_TABLE,
+  TROUBLEHUB_FANTASY_PICKS_TABLE,
+  TROUBLEHUB_FANTASY_ROUNDS_TABLE,
+  TROUBLEHUB_FANTASY_GAME_TABLE,
+];
 
 const IMAGE_MIME_EXTENSIONS = {
   "image/jpeg": ".jpg",
@@ -198,11 +210,7 @@ export function installTroublehubApi(deps) {
       [TROUBLEHUB_APP]
     )[0];
     if (app) {
-      for (const tableName of [
-        TROUBLEHUB_MATCH_CARDS_TABLE,
-        TROUBLEHUB_MATCH_ANSWERS_TABLE,
-        TROUBLEHUB_NOTIFICATIONS_TABLE,
-      ]) {
+      for (const tableName of TROUBLEHUB_TABLES) {
         run(
           `
             UPDATE system_dictionary

@@ -4,6 +4,7 @@ import { useAuth } from "../context/AuthContext";
 import { useBranding } from "../context/BrandingContext";
 import { useTheme } from "../context/ThemeContext";
 import { useSidebarPreferences } from "../hooks/useSidebarPreferences";
+import { isLcarsTheme } from "../utils/theme";
 import { AppBrandText, BrandMark } from "./AppBrand";
 import IronmanDialNav from "./IronmanDialNav";
 import { LcarsFootBand, LcarsFrameBrand } from "./LcarsShellChrome";
@@ -17,7 +18,8 @@ function AppShell({ children }) {
   const sidebar = useSidebarPreferences();
   const { fullTitle } = useBranding();
   const { resolvedTheme } = useTheme();
-  const isLcars = resolvedTheme === "lcars";
+  const isLcars = isLcarsTheme(resolvedTheme);
+  const isLcarsV2 = resolvedTheme === "lcars-v2";
   const isStudioTwitty = resolvedTheme === "studiotwitty";
   const displayName = user?.display_name || user?.username || "";
 
@@ -41,6 +43,7 @@ function AppShell({ children }) {
     menuOpen ? "shell-menu-open" : "",
     sidebar.isCollapsed ? "shell-sidebar-collapsed" : "shell-sidebar-expanded",
     isLcars ? "shell-lcars" : "",
+    isLcarsV2 ? "shell-lcars-v2" : "",
     isStudioTwitty ? "shell-studiotwitty" : "",
   ]
     .filter(Boolean)
@@ -102,6 +105,21 @@ function AppShell({ children }) {
             <div className="sidebar-rail">
               <Sidebar {...sidebarProps} />
             </div>
+
+            {isLcarsV2 ? (
+              <aside className="lcars-v2-command-rail" aria-label="Page command bar">
+                <div className="lcars-v2-command-rail-title">
+                  <span>Command</span>
+                  <strong>Bar</strong>
+                </div>
+                <div id="lcars-v2-command-host" className="lcars-v2-command-host">
+                  <span className="lcars-v2-command-placeholder">Page actions</span>
+                </div>
+                <div className="lcars-v2-command-block lcars-v2-command-block--blue" />
+                <div className="lcars-v2-command-block lcars-v2-command-block--cream" />
+                <div className="lcars-v2-command-block lcars-v2-command-block--yellow" />
+              </aside>
+            ) : null}
 
             {menuOpen && <div className="shell-scrim" onClick={closeMenu} aria-hidden="true" />}
 

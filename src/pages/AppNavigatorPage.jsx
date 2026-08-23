@@ -3,6 +3,7 @@ import { Link, Navigate } from "react-router-dom";
 import { getApplications } from "../api/dictionaryApi";
 import { useAuth } from "../context/AuthContext";
 import PageHeader from "../components/PageHeader";
+import { hasReportCenter } from "../dashboard/reportRegistry";
 import { userHasCalendarViewOnly } from "../utils/roles";
 
 function GridIcon() {
@@ -21,6 +22,15 @@ function SettingsIcon() {
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
       <circle cx="12" cy="12" r="3" />
       <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z" />
+    </svg>
+  );
+}
+
+function ReportsIcon() {
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M4 4h16v16H4z" />
+      <path d="M8 16v-4M12 16V8M16 16v-6" />
     </svg>
   );
 }
@@ -67,6 +77,9 @@ function AppNavigatorPage() {
   }
 
   const visibleApps = applications.filter((app) => canAccessApp(app.name));
+  const hasReports = visibleApps.some(
+    (app) => app.name !== "troublehub" && hasReportCenter(app.name)
+  );
 
   return (
     <>
@@ -86,6 +99,16 @@ function AppNavigatorPage() {
             <p>{application.description || `Open ${application.title}`}</p>
           </Link>
         ))}
+        {hasReports && (
+          <Link className="card" to="/reports">
+            <CardArrow />
+            <span className="card-icon" aria-hidden="true">
+              <ReportsIcon />
+            </span>
+            <h2>Reports</h2>
+            <p>Explore and build reports across your applications.</p>
+          </Link>
+        )}
         {isAdmin && (
           <Link className="card" to="/admin">
             <CardArrow />

@@ -14,6 +14,7 @@ import SpendingTrendsReport from "./reports/SpendingTrendsReport";
 import TaxCategorySummaryReport from "./reports/TaxCategorySummaryReport";
 import TotalBalanceReport from "./reports/TotalBalanceReport";
 import YearOverYearReport from "./reports/YearOverYearReport";
+import { APP_USER_ROLES } from "../utils/roles";
 
 export const REPORT_CATEGORIES = [
   { id: "overview", label: "Overview" },
@@ -199,7 +200,7 @@ export function hasDashboard(application) {
 }
 
 export function hasReportCenter(application) {
-  return getBuiltinReports(application).length > 0;
+  return Boolean(APP_USER_ROLES[application]) && application !== "troublehub";
 }
 
 export const DEFAULT_LAYOUTS = {

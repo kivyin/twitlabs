@@ -1,14 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { getDashboardReports } from "../api/dashboardApi";
 import ConfirmModal from "../components/common/ConfirmModal";
 import { useFavorites } from "../context/FavoritesContext";
 import DashboardWidget from "./DashboardWidget";
-import ReportBuilderModal from "./ReportBuilderModal";
 import ReportPickerModal from "./ReportPickerModal";
 import CustomSqlReport from "./reports/CustomSqlReport";
 import {
-  buildReportKey,
   getBuiltinReport,
   parseReportKey,
 } from "./reportRegistry";
@@ -116,8 +114,6 @@ function Dashboard({ application }) {
 
   const [customReports, setCustomReports] = useState([]);
   const [pickerOpen, setPickerOpen] = useState(false);
-  const [builderOpen, setBuilderOpen] = useState(false);
-  const [editingReport, setEditingReport] = useState(null);
   const [renamingId, setRenamingId] = useState(null);
   const [renameValue, setRenameValue] = useState("");
   const [creating, setCreating] = useState(false);
@@ -126,6 +122,7 @@ function Dashboard({ application }) {
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [deleting, setDeleting] = useState(false);
   const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
 
   // Allow deep links / favorites like /app/budget?dashboard=3
   const requestedDashboard = searchParams.get("dashboard");
@@ -192,20 +189,6 @@ function Dashboard({ application }) {
       })
       .filter(Boolean);
   }, [application, customReportMap, layout]);
-
-  const handleReportCreated = (report) => {
-    setCustomReports((current) => [...current, report]);
-    addReport(buildReportKey("custom", report.id), 2);
-    setBuilderOpen(false);
-    setPickerOpen(false);
-  };
-
-  const handleReportSaved = (report) => {
-    setCustomReports((current) =>
-      current.map((entry) => (entry.id === report.id ? { ...entry, ...report } : entry))
-    );
-    setEditingReport(null);
-  };
 
   const selectDashboard = (id) => {
     setActiveId(id);
@@ -280,7 +263,7 @@ function Dashboard({ application }) {
             <button type="button" onClick={() => setPickerOpen(true)}>
               Add report
             </button>
-            <button type="button" onClick={() => setBuilderOpen(true)}>
+            <button type="button" onClick={() => navigate(`/app/${application}/reports/new`)}>
               Build report
             </button>
             <button type="button" className="linkish-button" onClick={resetLayout}>
@@ -387,7 +370,7 @@ function Dashboard({ application }) {
               <button type="button" className="button-primary" onClick={() => setPickerOpen(true)}>
                 Add a report
               </button>
-              <button type="button" onClick={() => setBuilderOpen(true)}>
+              <button type="button" onClick={() => navigate(`/app/${application}/reports/new`)}>
                 Build custom report
               </button>
             </div>
@@ -413,7 +396,12 @@ function Dashboard({ application }) {
                     setReportSpan(widget.key, widget.span >= 3 ? 1 : Number(widget.span || 1) + 1)
                   }
                   onEdit={
-                    widget.customReport ? () => setEditingReport(widget.customReport) : undefined
+                    widget.customReport
+                      ? () =>
+                          navigate(
+                            `/app/${application}/reports/custom/${widget.customReport.id}/edit`
+                          )
+                      : undefined
                   }
                 >
                   <ReportComponent {...widget.props} />
@@ -436,25 +424,8 @@ function Dashboard({ application }) {
           }}
           onBuildCustom={() => {
             setPickerOpen(false);
-            setBuilderOpen(true);
+            navigate(`/app/${application}/reports/new`);
           }}
-        />
-      )}
-
-      {builderOpen && (
-        <ReportBuilderModal
-          application={application}
-          onClose={() => setBuilderOpen(false)}
-          onCreated={handleReportCreated}
-        />
-      )}
-
-      {editingReport && (
-        <ReportBuilderModal
-          application={application}
-          report={editingReport}
-          onClose={() => setEditingReport(null)}
-          onSaved={handleReportSaved}
         />
       )}
 

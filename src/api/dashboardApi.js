@@ -27,6 +27,13 @@ export function deleteDashboardReport(id) {
   });
 }
 
+export function runDashboardReport({ application, sql }) {
+  return apiRequest("/api/dashboard/reports/run", {
+    method: "POST",
+    body: JSON.stringify({ application, sql }),
+  });
+}
+
 // ── Multi-dashboard API ─────────────────────────────────────────────
 
 export async function getDashboards(application = "budget") {

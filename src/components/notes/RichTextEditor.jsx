@@ -27,6 +27,7 @@ import {
   localizeHtmlImages,
   prepareImageFile,
 } from "../../utils/noteImages";
+import NotesModal from "./NotesModal";
 import NotesUrlModal from "./NotesUrlModal";
 import { toolbarIcons } from "./tiptapToolbarIcons";
 
@@ -184,6 +185,8 @@ const RichTextEditor = forwardRef(function RichTextEditor(
   ref
 ) {
   const [urlModal, setUrlModal] = useState(null);
+  const [sourceOpen, setSourceOpen] = useState(false);
+  const [sourceHtml, setSourceHtml] = useState("");
   const [, setToolbarTick] = useState(0);
   const editorRef = useRef(null);
   const imageInputRef = useRef(null);
@@ -410,6 +413,9 @@ const RichTextEditor = forwardRef(function RichTextEditor(
   const currentFont = editor?.getAttributes("textStyle").fontFamily || "";
   const currentFontSize = editor?.getAttributes("textStyle").fontSize || "";
   const currentBlock = getBlockValue(editor);
+  const editorText = editor?.getText() ?? "";
+  const wordCount = editorText.trim() ? editorText.trim().split(/\s+/).length : 0;
+  const characterCount = editorText.length;
 
   const handleUrlSubmit = async (url) => {
     if (!editor) return;
@@ -816,6 +822,17 @@ const RichTextEditor = forwardRef(function RichTextEditor(
           >
             {toolbarIcons.clear}
           </ToolbarButton>
+          <ToolbarButton
+            title="Edit HTML source"
+            disabled={disabled}
+            onClick={() => {
+              setSourceHtml(editor?.getHTML() ?? "");
+              setSourceOpen(true);
+            }}
+            className="tiptap-toolbar-button--text"
+          >
+            HTML
+          </ToolbarButton>
         </div>
 
         {inTable && (
@@ -886,6 +903,13 @@ const RichTextEditor = forwardRef(function RichTextEditor(
         editorContent
       )}
 
+      {!readOnly && (
+        <div className="tiptap-statusbar" aria-live="polite">
+          {wordCount} word{wordCount === 1 ? "" : "s"} · {characterCount} character
+          {characterCount === 1 ? "" : "s"}
+        </div>
+      )}
+
       {urlModal === "link" ? (
         <NotesUrlModal
           key="link-modal"
@@ -916,6 +940,41 @@ const RichTextEditor = forwardRef(function RichTextEditor(
             await insertImageFiles(editor, [file]);
           }}
         />
+      ) : null}
+
+      {sourceOpen ? (
+        <NotesModal
+          title="Edit HTML source"
+          subtitle="Edit the note markup directly. Unsupported or unsafe markup may be normalized by the editor."
+          onClose={() => setSourceOpen(false)}
+          footer={
+            <>
+              <button
+                type="button"
+                className="button-primary"
+                onClick={() => {
+                  editor?.commands.setContent(sourceHtml, { emitUpdate: true });
+                  setSourceOpen(false);
+                }}
+              >
+                Apply source
+              </button>
+              <button type="button" onClick={() => setSourceOpen(false)}>
+                Cancel
+              </button>
+            </>
+          }
+        >
+          <label className="notes-source-editor-field">
+            HTML
+            <textarea
+              value={sourceHtml}
+              onChange={(event) => setSourceHtml(event.target.value)}
+              spellCheck={false}
+              rows={18}
+            />
+          </label>
+        </NotesModal>
       ) : null}
 
       <input

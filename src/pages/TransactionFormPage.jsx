@@ -14,6 +14,7 @@ import ConfirmModal from "../components/common/ConfirmModal";
 import FormActions from "../components/FormActions";
 import PageHeader from "../components/PageHeader";
 import TransactionAttachmentsPanel from "../components/TransactionAttachmentsPanel";
+import FieldHint from "../components/ui/FieldHint";
 import { useAuth } from "../context/AuthContext";
 import { useBrowseReturn } from "../hooks/useBrowseReturn";
 import { buildForeignKeyOptionLabel } from "../utils/tableForm";
@@ -65,12 +66,14 @@ function TransactionFormPage() {
   const receiptDraftKey = receiptDraft ? JSON.stringify(receiptDraft) : "";
   const receiptDraftAppliedRef = useRef("");
   const receiptImageAppliedRef = useRef(false);
+  const attachmentPanelRef = useRef(null);
   const [formData, setFormData] = useState({
     user_id: "",
     account_id: prefillAccountId,
     payee_id: "",
     category_id: "",
     amount: "",
+    check_number: "",
     description: "",
     transaction_date: new Date().toISOString().slice(0, 10),
   });
@@ -85,6 +88,8 @@ function TransactionFormPage() {
   const [categoryTypeById, setCategoryTypeById] = useState({});
   const [userOptions, setUserOptions] = useState([]);
   const [pendingAttachments, setPendingAttachments] = useState([]);
+  const [attachmentsOpen, setAttachmentsOpen] = useState(false);
+  const [attachmentCount, setAttachmentCount] = useState(0);
   const [error, setError] = useState("");
   const [status, setStatus] = useState("");
   const [ruleHint, setRuleHint] = useState("");
@@ -201,6 +206,7 @@ function TransactionFormPage() {
               transaction.amount === null || transaction.amount === undefined
                 ? ""
                 : String(Math.abs(Number(transaction.amount))),
+            check_number: transaction.check_number ?? "",
             description: transaction.description ?? "",
             transaction_date: transaction.transaction_date ?? "",
           });
@@ -293,6 +299,7 @@ function TransactionFormPage() {
 
   const selectedCategoryType = categoryTypeById[formData.category_id] ?? "";
   const selectedAccountType = accountTypeById[formData.account_id] ?? "";
+  const selectedAccountIsChecking = selectedAccountType === "Bank Checking";
   const selectedAccountIsLiability = isLiabilityAccountType(selectedAccountType);
   const selectedAccountIsLoan = isLoanAccountType(selectedAccountType);
   const selectedAccountIsLoc = isLineOfCreditAccountType(selectedAccountType);
@@ -313,6 +320,16 @@ function TransactionFormPage() {
         : (cashEntryMode === "deposit" ? 1 : -1) * Math.abs(previewNumeric)
       : previewNumeric;
   const amountClassName = getSignedAmountClass(signedPreviewAmount);
+  const signedAmountHint =
+    formData.amount !== "" && Number.isFinite(signedPreviewAmount)
+      ? `Will post as ${signedPreviewAmount.toFixed(2)} (${
+          selectedAccountIsLiability
+            ? `${liabilityEntryMode === "payment" ? "reduces" : "increases"} amount owed`
+            : cashEntryMode === "deposit"
+              ? "deposit"
+              : "withdrawal"
+        }).`
+      : "";
   const transferPath = `/app/${appName}/transfers/new`;
   const transferState = formData.account_id
     ? { fromAccountId: String(formData.account_id), accountId: String(formData.account_id) }
@@ -334,6 +351,9 @@ function TransactionFormPage() {
       const next = { ...prev, [name]: value };
       if (name === "account_id") {
         const nextType = accountTypeById[value] ?? "";
+        if (nextType !== "Bank Checking") {
+          next.check_number = "";
+        }
         if (isLiabilityAccountType(nextType)) {
           setLiabilityEntryMode(getDefaultLiabilityEntryMode(nextType));
         } else {
@@ -412,6 +432,7 @@ function TransactionFormPage() {
       payee_id: formData.payee_id || null,
       category_id: formData.category_id,
       amount,
+      check_number: selectedAccountIsChecking ? formData.check_number.trim() || null : null,
       description: formData.description,
       transaction_date: formData.transaction_date,
     };
@@ -547,18 +568,42 @@ function TransactionFormPage() {
               submitLabel={isEdit ? "Update transaction" : "Save transaction"}
               onCancel={() => goBack()}
               onDelete={isEdit ? () => setShowDeleteConfirm(true) : undefined}
+              extraActions={
+                <>
+                  <button
+                    type="button"
+                    className="button"
+                    onClick={() => attachmentPanelRef.current?.selectFile()}
+                    disabled={saving}
+                  >
+                    Add attachment
+                  </button>
+                  {attachmentCount > 0 && (
+                    <button
+                      type="button"
+                      className="button"
+                      onClick={() => setAttachmentsOpen(true)}
+                      disabled={saving}
+                    >
+                      Attachments ({attachmentCount})
+                    </button>
+                  )}
+                </>
+              }
             >
               {receiptPrefillNotice && <p className="status">{receiptPrefillNotice}</p>}
 
-              <div className="checkbook-layout">
-              <aside className="checkbook-attachments">
-                <TransactionAttachmentsPanel
-                  transactionId={isEdit ? recordId : null}
-                  pendingAttachments={isEdit ? [] : pendingAttachments}
-                  onPendingAttachmentsChange={setPendingAttachments}
-                  disabled={saving}
-                />
-              </aside>
+              <TransactionAttachmentsPanel
+                ref={attachmentPanelRef}
+                transactionId={isEdit ? recordId : null}
+                pendingAttachments={isEdit ? [] : pendingAttachments}
+                onPendingAttachmentsChange={setPendingAttachments}
+                onCountChange={setAttachmentCount}
+                onOpenRequest={() => setAttachmentsOpen(true)}
+                open={attachmentsOpen}
+                onClose={() => setAttachmentsOpen(false)}
+                disabled={saving}
+              />
 
               <div className="checkbook-main">
                 <div className="checkbook-slip">
@@ -569,7 +614,20 @@ function TransactionFormPage() {
 
                   <div className="checkbook-top-row">
                     <label>
-                      Account
+                      <span className="field-label-row">
+                        <span>Account</span>
+                        <FieldHint
+                          text={
+                            selectedAccountIsLiability
+                              ? selectedAccountIsLoan
+                                ? "Loans track amount owed. Use Payment to pay it down."
+                                : selectedAccountIsLoc
+                                  ? "Lines of credit track amount owed. Draw cash with Transfer to a bank, or pay a card with Transfer."
+                                  : "Credit cards track amount owed. Use Payment or Charge below."
+                              : "The account this transaction applies to."
+                          }
+                        />
+                      </span>
                       <select
                         value={formData.account_id}
                         onChange={(event) => handleChange("account_id", event.target.value)}
@@ -582,15 +640,6 @@ function TransactionFormPage() {
                           </option>
                         ))}
                       </select>
-                      <span className="field-hint">
-                        {selectedAccountIsLiability
-                          ? selectedAccountIsLoan
-                            ? "Loans track amount owed. Use Payment to pay it down."
-                            : selectedAccountIsLoc
-                              ? "Lines of credit track amount owed. Draw cash with Transfer to a bank, or pay a card with Transfer."
-                              : "Credit cards track amount owed. Use Payment or Charge below."
-                          : "The account this transaction applies to."}
-                      </span>
                     </label>
 
                     <label>
@@ -632,7 +681,14 @@ function TransactionFormPage() {
                     </fieldset>
                   ) : (
                     <fieldset className="liability-entry-fieldset">
-                      <legend>What kind of entry is this?</legend>
+                      <legend>
+                        <span className="field-label-row">
+                          <span>What kind of entry is this?</span>
+                          {formData.account_id ? (
+                            <FieldHint text="To move money between accounts or pay a loan/card, use Transfer instead." />
+                          ) : null}
+                        </span>
+                      </legend>
                       <div className="liability-entry-mode" role="group" aria-label="Entry type">
                         <button
                           type="button"
@@ -655,14 +711,25 @@ function TransactionFormPage() {
                           <span>Spends or removes money</span>
                         </button>
                       </div>
-                      {formData.account_id ? (
-                        <p className="field-hint liability-entry-hint">
-                          To move money between accounts or pay a loan/card, use{" "}
-                          <BrowseLink to={`/app/${appName}/transfers/new`}>Transfer</BrowseLink>{" "}
-                          instead.
-                        </p>
-                      ) : null}
                     </fieldset>
+                  )}
+
+                  {selectedAccountIsChecking && (
+                    <label className="checkbook-check-number">
+                      <span className="field-label-row">
+                        <span>Check number</span>
+                        <FieldHint text="Stored as text to preserve leading zeros." />
+                      </span>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        maxLength={50}
+                        value={formData.check_number}
+                        onChange={(event) => handleChange("check_number", event.target.value)}
+                        placeholder="Optional"
+                        autoComplete="off"
+                      />
+                    </label>
                   )}
 
                   <div className="checkbook-pay-row">
@@ -682,7 +749,12 @@ function TransactionFormPage() {
                     </label>
 
                     <label className="checkbook-amount">
-                      Amount
+                      <span className="field-label-row">
+                        <span>Amount</span>
+                        <FieldHint
+                          text={[amountHint, signedAmountHint].filter(Boolean).join(" ")}
+                        />
+                      </span>
                       <input
                         type="number"
                         inputMode="decimal"
@@ -695,28 +767,18 @@ function TransactionFormPage() {
                       />
                     </label>
                   </div>
-                  {amountHint && <span className="field-hint">{amountHint}</span>}
-                  {formData.amount !== "" && Number.isFinite(signedPreviewAmount) ? (
-                    <span className="field-hint">
-                      Will post as{" "}
-                      <strong className={amountClassName || undefined}>
-                        {signedPreviewAmount.toFixed(2)}
-                      </strong>
-                      {selectedAccountIsLiability
-                        ? ` (${liabilityEntryMode === "payment" ? "reduces" : "increases"} amount owed).`
-                        : ` (${cashEntryMode === "deposit" ? "deposit" : "withdrawal"}).`}
-                    </span>
-                  ) : null}
 
                   <label className="checkbook-memo">
-                    Memo / description
+                    <span className="field-label-row">
+                      <span>Memo / description</span>
+                      <FieldHint text={ruleHint} />
+                    </span>
                     <input
                       value={formData.description}
                       onChange={(event) => handleChange("description", event.target.value)}
                       onBlur={applyRuleMatch}
                       placeholder="Electric bill, credit card payment, etc."
                     />
-                    {ruleHint && <span className="field-hint">{ruleHint}</span>}
                   </label>
 
                   <div className="checkbook-meta-row">
@@ -843,7 +905,6 @@ function TransactionFormPage() {
                     )}
                   </div>
                 </div>
-              </div>
               </div>
             </FormActions>
           </form>

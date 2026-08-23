@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { getToken } from "../api/authApi";
 import {
   deleteTransactionAttachment,
@@ -46,12 +46,20 @@ async function fetchAttachmentPreviewUrl(transactionId, attachmentId) {
   return URL.createObjectURL(blob);
 }
 
-function TransactionAttachmentsPanel({
-  transactionId = null,
-  pendingAttachments = [],
-  onPendingAttachmentsChange,
-  disabled = false,
-}) {
+const TransactionAttachmentsPanel = forwardRef(function TransactionAttachmentsPanel(
+  {
+    transactionId = null,
+    pendingAttachments = [],
+    onPendingAttachmentsChange,
+    onCountChange,
+    onOpenRequest,
+    open = false,
+    onClose,
+    disabled = false,
+  },
+  ref
+) {
+  const fileInputRef = useRef(null);
   const [attachments, setAttachments] = useState([]);
   const [previewUrls, setPreviewUrls] = useState({});
   const [loading, setLoading] = useState(false);
@@ -59,6 +67,16 @@ function TransactionAttachmentsPanel({
   const [error, setError] = useState("");
   const [status, setStatus] = useState("");
   const [deleteTarget, setDeleteTarget] = useState(null);
+
+  useImperativeHandle(ref, () => ({
+    selectFile() {
+      fileInputRef.current?.click();
+    },
+  }));
+
+  useEffect(() => {
+    onCountChange?.(pendingAttachments.length + attachments.length);
+  }, [attachments.length, onCountChange, pendingAttachments.length]);
 
   useEffect(() => {
     if (!transactionId) {
@@ -130,6 +148,7 @@ function TransactionAttachmentsPanel({
     const file = event.target.files?.[0];
     event.target.value = "";
     if (!file) return;
+    onOpenRequest?.();
 
     setError("");
     setStatus("");
@@ -213,104 +232,121 @@ function TransactionAttachmentsPanel({
   };
 
   return (
-    <section className="transaction-attachments-panel">
-      <div className="transaction-attachments-head">
-        <div>
-          <h3>Attachments</h3>
-          <p className="subtext">
-            Receipts, PDFs, and photos linked to this transaction.
-            {!transactionId ? " Files selected here attach when you save." : ""}
-          </p>
-        </div>
-        <label className="linkish-button attachment-upload-button">
-          {busy ? "Working..." : "Add file"}
-          <input
-            type="file"
-            accept="image/*,application/pdf"
-            onChange={handleFileSelected}
-            disabled={disabled || busy}
-            hidden
-          />
-        </label>
-      </div>
+    <>
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*,application/pdf"
+        onChange={handleFileSelected}
+        disabled={disabled || busy}
+        hidden
+      />
 
-      {error && <p className="error">{error}</p>}
-      {status && <p className="status-text">{status}</p>}
-
-      {loading ? (
-        <p className="subtext">Loading attachments...</p>
-      ) : (
-        <ul className="transaction-attachments-list">
-          {pendingAttachments.map((item, index) => (
-            <li key={item.key || `${item.filename}-${index}`} className="transaction-attachment-item">
-              <div className="transaction-attachment-main">
-                {item.previewUrl ? (
-                  <img src={item.previewUrl} alt="" className="transaction-attachment-thumb" />
-                ) : (
-                  <div className="transaction-attachment-thumb placeholder">PDF</div>
-                )}
-                <div>
-                  <strong>{item.filename}</strong>
-                  <p className="subtext">Pending · {sourceLabel(item.source)}</p>
-                </div>
+      {open && (
+        <div className="modal-backdrop" onMouseDown={() => !busy && onClose?.()}>
+          <section
+            className="modal-card transaction-attachments-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="transaction-attachments-title"
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <div className="transaction-attachments-head">
+              <div>
+                <h2 id="transaction-attachments-title">Attachments</h2>
+                <p className="subtext">
+                  Receipts, PDFs, and photos linked to this transaction.
+                  {!transactionId ? " Selected files attach when you save." : ""}
+                </p>
               </div>
-              <button
-                type="button"
-                className="linkish-button"
-                onClick={() => removePending(index)}
-                disabled={disabled || busy}
-              >
-                Remove
+              <button type="button" onClick={onClose} disabled={busy}>
+                Close
               </button>
-            </li>
-          ))}
+            </div>
 
-          {attachments.map((attachment) => (
-            <li key={attachment.id} className="transaction-attachment-item">
-              <div className="transaction-attachment-main">
-                {previewUrls[attachment.id] ? (
-                  <img
-                    src={previewUrls[attachment.id]}
-                    alt=""
-                    className="transaction-attachment-thumb"
-                  />
-                ) : (
-                  <div className="transaction-attachment-thumb placeholder">
-                    {String(attachment.mime_type || "").startsWith("image/") ? "IMG" : "PDF"}
-                  </div>
-                )}
-                <div>
-                  <strong>{attachment.filename}</strong>
-                  <p className="subtext">
-                    {sourceLabel(attachment.source)} · {formatBytes(attachment.size_bytes)}
-                  </p>
-                </div>
-              </div>
-              <div className="transaction-attachment-actions">
-                <button
-                  type="button"
-                  className="linkish-button"
-                  onClick={() => handleDownload(attachment)}
-                  disabled={disabled || busy}
-                >
-                  Download
-                </button>
-                <button
-                  type="button"
-                  className="linkish-button"
-                  onClick={() => setDeleteTarget(attachment)}
-                  disabled={disabled || busy}
-                >
-                  Remove
-                </button>
-              </div>
-            </li>
-          ))}
+            {error && <p className="error">{error}</p>}
+            {status && <p className="status-text">{status}</p>}
 
-          {pendingAttachments.length === 0 && attachments.length === 0 ? (
-            <li className="subtext">No attachments yet.</li>
-          ) : null}
-        </ul>
+            {loading ? (
+              <p className="subtext">Loading attachments...</p>
+            ) : (
+              <ul className="transaction-attachments-list">
+                {pendingAttachments.map((item, index) => (
+                  <li
+                    key={item.key || `${item.filename}-${index}`}
+                    className="transaction-attachment-item"
+                  >
+                    <div className="transaction-attachment-main">
+                      {item.previewUrl ? (
+                        <img src={item.previewUrl} alt="" className="transaction-attachment-thumb" />
+                      ) : (
+                        <div className="transaction-attachment-thumb placeholder">PDF</div>
+                      )}
+                      <div>
+                        <strong>{item.filename}</strong>
+                        <p className="subtext">Pending · {sourceLabel(item.source)}</p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      className="linkish-button"
+                      onClick={() => removePending(index)}
+                      disabled={disabled || busy}
+                    >
+                      Remove
+                    </button>
+                  </li>
+                ))}
+
+                {attachments.map((attachment) => (
+                  <li key={attachment.id} className="transaction-attachment-item">
+                    <div className="transaction-attachment-main">
+                      {previewUrls[attachment.id] ? (
+                        <img
+                          src={previewUrls[attachment.id]}
+                          alt=""
+                          className="transaction-attachment-thumb"
+                        />
+                      ) : (
+                        <div className="transaction-attachment-thumb placeholder">
+                          {String(attachment.mime_type || "").startsWith("image/") ? "IMG" : "PDF"}
+                        </div>
+                      )}
+                      <div>
+                        <strong>{attachment.filename}</strong>
+                        <p className="subtext">
+                          {sourceLabel(attachment.source)} · {formatBytes(attachment.size_bytes)}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="transaction-attachment-actions">
+                      <button
+                        type="button"
+                        className="linkish-button"
+                        onClick={() => handleDownload(attachment)}
+                        disabled={disabled || busy}
+                      >
+                        Download
+                      </button>
+                      <button
+                        type="button"
+                        className="linkish-button"
+                        onClick={() => setDeleteTarget(attachment)}
+                        disabled={disabled || busy}
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  </li>
+                ))}
+
+                {pendingAttachments.length === 0 && attachments.length === 0 ? (
+                  <li className="subtext">No attachments yet.</li>
+                ) : null}
+              </ul>
+            )}
+          </section>
+        </div>
       )}
 
       {deleteTarget && (
@@ -323,8 +359,8 @@ function TransactionAttachmentsPanel({
           onConfirm={handleDeleteSaved}
         />
       )}
-    </section>
+    </>
   );
-}
+});
 
 export default TransactionAttachmentsPanel;

@@ -3,6 +3,7 @@ import { useParams } from "react-router-dom";
 import { insertRow, runQuery, selectRows, updateRows } from "../api/dbApi";
 import FormActions from "../components/FormActions";
 import PageHeader from "../components/PageHeader";
+import FieldHint from "../components/ui/FieldHint";
 import { useAuth } from "../context/AuthContext";
 import { useBrowseReturn } from "../hooks/useBrowseReturn";
 import { buildForeignKeyOptionLabel } from "../utils/tableForm";
@@ -207,7 +208,16 @@ function GoalFormPage() {
               </label>
 
               <label>
-                Current amount
+                <span className="field-label-row">
+                  <span>Current amount</span>
+                  <FieldHint
+                    text={
+                      formData.account_id
+                        ? "Progress comes from the linked account balance when synced."
+                        : "Enter saved progress manually, or link an account below."
+                    }
+                  />
+                </span>
                 <input
                   type="number"
                   step="0.01"
@@ -215,15 +225,13 @@ function GoalFormPage() {
                   onChange={(event) => handleChange("current_amount", event.target.value)}
                   disabled={Boolean(formData.account_id)}
                 />
-                <span className="field-hint">
-                  {formData.account_id
-                    ? "Progress comes from the linked account balance when synced."
-                    : "Enter saved progress manually, or link an account below."}
-                </span>
               </label>
 
               <label>
-                Linked account
+                <span className="field-label-row">
+                  <span>Linked account</span>
+                  <FieldHint text={linkedAccountHint} />
+                </span>
                 <select value={formData.account_id} onChange={(event) => handleChange("account_id", event.target.value)}>
                   <option value="">No linked account</option>
                   {accountOptions.map((option) => (
@@ -232,7 +240,6 @@ function GoalFormPage() {
                     </option>
                   ))}
                 </select>
-                <span className="field-hint">{linkedAccountHint}</span>
               </label>
 
               <label>

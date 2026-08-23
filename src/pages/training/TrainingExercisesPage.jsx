@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import {
   createTrainingExercise,
   deleteTrainingExercise,
@@ -14,6 +15,9 @@ import {
 
 function TrainingExercisesPage() {
   const appName = "training";
+  const [searchParams] = useSearchParams();
+  const linkedExerciseId = searchParams.get("exercise");
+  const openedLinkedExerciseRef = useRef(null);
   const { athleteUserId } = useTrainingAthlete();
   const { confirm, confirmModal } = useConfirmDialog();
   const [exercises, setExercises] = useState([]);
@@ -67,6 +71,25 @@ function TrainingExercisesPage() {
       notes: exercise.notes || "",
     });
   };
+
+  useEffect(() => {
+    if (
+      !linkedExerciseId ||
+      openedLinkedExerciseRef.current === linkedExerciseId ||
+      exercises.length === 0
+    ) {
+      return;
+    }
+    const exercise = exercises.find(
+      (entry) => String(entry.id) === String(linkedExerciseId)
+    );
+    if (!exercise) return;
+    openedLinkedExerciseRef.current = linkedExerciseId;
+    // URL-driven one-time editor sync.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    startEdit(exercise);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }, [exercises, linkedExerciseId]);
 
   const handleDelete = async (exercise) => {
     const ok = await confirm({

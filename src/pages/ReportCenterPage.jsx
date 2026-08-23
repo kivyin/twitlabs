@@ -3,7 +3,6 @@ import { Link, useParams } from "react-router-dom";
 import { deleteDashboardReport, getDashboardReports } from "../api/dashboardApi";
 import ConfirmModal from "../components/common/ConfirmModal";
 import PageHeader from "../components/PageHeader";
-import ReportBuilderModal from "../dashboard/ReportBuilderModal";
 import {
   buildCustomReportPath,
   getReportsByCategory,
@@ -13,8 +12,6 @@ import {
 function ReportCenterPage() {
   const { appName = "budget" } = useParams();
   const [customReports, setCustomReports] = useState([]);
-  const [builderOpen, setBuilderOpen] = useState(false);
-  const [editingReport, setEditingReport] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState("");
@@ -69,22 +66,22 @@ function ReportCenterPage() {
           { label: "Report Center" },
         ]}
         title="Report Center"
-        subtitle="Browse built-in financial reports, tax summaries, and your custom SQL reports."
-        actions={
-          <>
-            <button type="button" onClick={() => setBuilderOpen(true)}>
-              Build custom report
-            </button>
-            <Link className="button-primary" to={`/app/${appName}`}>
-              Back to dashboard
-            </Link>
-          </>
+        subtitle={
+          appName === "budget"
+            ? "Browse built-in financial reports and your custom data views."
+            : "Build, organize, and open custom reports for this application."
         }
       />
 
       {error && <p className="error">{error}</p>}
 
       <div className="report-center-page">
+        <div className="report-center-primary-action">
+          <Link className="button-primary" to={`/app/${appName}/reports/new`}>
+            Build custom report
+          </Link>
+        </div>
+
         {groupedReports.map((group) => (
           <section key={group.id} className="report-center-section panel">
             <div className="report-center-section-head">
@@ -109,9 +106,6 @@ function ReportCenterPage() {
         <section className="report-center-section panel">
           <div className="report-center-section-head">
             <h2>Custom SQL</h2>
-            <button type="button" className="linkish-button" onClick={() => setBuilderOpen(true)}>
-              Build new report
-            </button>
           </div>
           {customReports.length === 0 ? (
             <p className="subtext">No custom SQL reports saved yet.</p>
@@ -128,13 +122,12 @@ function ReportCenterPage() {
                     <span className="report-center-card-link">Open report</span>
                   </Link>
                   <div className="report-center-card-actions">
-                    <button
-                      type="button"
+                    <Link
                       className="linkish-button"
-                      onClick={() => setEditingReport(report)}
+                      to={`/app/${appName}/reports/custom/${report.id}/edit`}
                     >
                       Edit
-                    </button>
+                    </Link>
                     <button
                       type="button"
                       className="linkish-button danger"
@@ -149,31 +142,6 @@ function ReportCenterPage() {
           )}
         </section>
       </div>
-
-      {builderOpen && (
-        <ReportBuilderModal
-          application={appName}
-          onClose={() => setBuilderOpen(false)}
-          onCreated={(report) => {
-            setCustomReports((current) => [...current, report]);
-            setBuilderOpen(false);
-          }}
-        />
-      )}
-
-      {editingReport && (
-        <ReportBuilderModal
-          application={appName}
-          report={editingReport}
-          onClose={() => setEditingReport(null)}
-          onSaved={(report) => {
-            setCustomReports((current) =>
-              current.map((entry) => (entry.id === report.id ? { ...entry, ...report } : entry))
-            );
-            setEditingReport(null);
-          }}
-        />
-      )}
 
       {deleteTarget && (
         <ConfirmModal

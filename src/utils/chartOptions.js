@@ -2,7 +2,8 @@ import { formatCurrency } from "./format";
 
 export const CHART_KINDS = [
   { id: "stat", label: "Single stat", chart: false },
-  { id: "table", label: "Table", chart: false },
+  { id: "list", label: "Record list", chart: false },
+  { id: "table", label: "Table (legacy)", chart: false },
   { id: "bars", label: "Bar list (simple)", chart: false },
   { id: "bar", label: "Bar chart", chart: true },
   { id: "line", label: "Line chart", chart: true },
@@ -55,6 +56,18 @@ function firstNumericColumn(rows, exclude = []) {
 }
 
 function makeValueFormatter(valueFormat) {
+  if (valueFormat === "percent") {
+    return (value) =>
+      new Intl.NumberFormat("en-US", { style: "percent", maximumFractionDigits: 1 }).format(
+        Number(value) || 0
+      );
+  }
+  if (valueFormat === "compact") {
+    return (value) =>
+      new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 }).format(
+        Number(value) || 0
+      );
+  }
   if (valueFormat === "number") {
     return (value) => new Intl.NumberFormat("en-US").format(Number(value) || 0);
   }
@@ -71,6 +84,13 @@ export function buildChartOption(kind, rows, config = {}) {
   const columns = Object.keys(rows[0]);
   const xColumn = config.xColumn && columns.includes(config.xColumn) ? config.xColumn : columns[0];
   const formatValue = makeValueFormatter(config.valueFormat);
+  const palette =
+    Array.isArray(config.colors) && config.colors.some(Boolean)
+      ? config.colors.filter(Boolean)
+      : CHART_PALETTE;
+  const title = config.title
+    ? { text: config.title, left: "center", textStyle: { fontSize: 15, fontWeight: 600 } }
+    : undefined;
 
   const configuredValues = Array.isArray(config.valueColumns)
     ? config.valueColumns.filter((column) => columns.includes(column))
@@ -96,14 +116,15 @@ export function buildChartOption(kind, rows, config = {}) {
     const showSliceLabels = config.showLabels !== false;
 
     return {
-      color: CHART_PALETTE,
+      color: palette,
+      title,
       tooltip: baseTooltip,
       legend: config.legend === false ? undefined : { bottom: 0, type: "scroll" },
       series: [
         {
           type: "pie",
           radius: kind === "donut" ? ["40%", "62%"] : ["0%", "58%"],
-          center: ["50%", showSliceLabels ? "42%" : "44%"],
+          center: ["50%", config.title ? "48%" : showSliceLabels ? "42%" : "44%"],
           data,
           label: showSliceLabels
             ? {
@@ -132,16 +153,24 @@ export function buildChartOption(kind, rows, config = {}) {
   if (kind === "scatter") {
     const yColumn = valueColumns[0];
     return {
-      color: CHART_PALETTE,
+      color: palette,
+      title,
       tooltip: {
         trigger: "item",
         formatter: (params) =>
           `${xColumn}: ${params.value[0]}<br/>${yColumn}: ${formatValue(params.value[1])}`,
       },
-      grid: { left: 8, right: 16, top: 24, bottom: 8, containLabel: true },
-      xAxis: { type: "value", splitLine: { lineStyle: { opacity: 0.2 } } },
+      grid: { left: 8, right: 16, top: config.title ? 50 : 24, bottom: 8, containLabel: true },
+      xAxis: {
+        type: "value",
+        name: config.xAxisTitle || xColumn,
+        nameLocation: "middle",
+        nameGap: 28,
+        splitLine: { lineStyle: { opacity: 0.2 } },
+      },
       yAxis: {
         type: "value",
+        name: config.yAxisTitle || yColumn,
         splitLine: { lineStyle: { opacity: 0.2 } },
         axisLabel: { formatter: formatValue },
       },
@@ -149,6 +178,9 @@ export function buildChartOption(kind, rows, config = {}) {
         {
           type: "scatter",
           symbolSize: 10,
+          label: config.showLabels
+            ? { show: true, position: "top", formatter: (params) => formatValue(params.value[1]) }
+            : { show: false },
           data: rows.map((row) => [Number(row[xColumn]) || 0, Number(row[yColumn]) || 0]),
         },
       ],
@@ -182,6 +214,9 @@ export function buildChartOption(kind, rows, config = {}) {
       stack,
       areaStyle,
       smooth: seriesType === "line",
+      label: config.showLabels
+        ? { show: true, formatter: (params) => formatValue(params.value) }
+        : undefined,
       data: categories.map((category) => lookup.get(`${category}|${name}`) ?? 0),
     }));
   } else {
@@ -192,6 +227,9 @@ export function buildChartOption(kind, rows, config = {}) {
       stack,
       areaStyle,
       smooth: seriesType === "line",
+      label: config.showLabels
+        ? { show: true, formatter: (params) => formatValue(params.value) }
+        : undefined,
       data: rows.map((row) => Number(row[column]) || 0),
     }));
   }
@@ -199,17 +237,28 @@ export function buildChartOption(kind, rows, config = {}) {
   const showLegend = config.legend !== false && series.length > 1;
 
   return {
-    color: CHART_PALETTE,
+    color: palette,
+    title,
     tooltip: baseTooltip,
     legend: showLegend ? { bottom: 0, type: "scroll" } : undefined,
-    grid: { left: 8, right: 16, top: 24, bottom: showLegend ? 28 : 8, containLabel: true },
+    grid: {
+      left: 8,
+      right: 16,
+      top: config.title ? 50 : 24,
+      bottom: showLegend ? 42 : config.xAxisTitle ? 34 : 8,
+      containLabel: true,
+    },
     xAxis: {
       type: "category",
       data: categories,
+      name: config.xAxisTitle || "",
+      nameLocation: "middle",
+      nameGap: 28,
       axisLabel: { hideOverlap: true },
     },
     yAxis: {
       type: "value",
+      name: config.yAxisTitle || "",
       splitLine: { lineStyle: { opacity: 0.2 } },
       axisLabel: { formatter: formatValue },
     },

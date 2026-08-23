@@ -3,11 +3,13 @@
 @import "tailwindcss";
 @import "./index.css" layer(legacy);
 @import "./lcars.css" layer(legacy);
+@import "./lcars-v2.css" layer(legacy);
 @import "./ironman.css" layer(legacy);
 @import "./App.css" layer(legacy);
 
 @custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
 @custom-variant lcars (&:where([data-theme="lcars"], [data-theme="lcars"] *));
+@custom-variant lcars-v2 (&:where([data-theme="lcars-v2"], [data-theme="lcars-v2"] *));
 @custom-variant studiotwitty (&:where([data-theme="studiotwitty"], [data-theme="studiotwitty"] *));
 
 @theme {

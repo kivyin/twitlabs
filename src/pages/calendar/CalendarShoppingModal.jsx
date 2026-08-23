@@ -37,7 +37,7 @@ function TrashIcon() {
   );
 }
 
-function CalendarShoppingModal({ open, onClose }) {
+function CalendarShoppingModal({ open, onClose, preferredListId = null, highlightedItemId = null }) {
   const { confirm, confirmModal } = useConfirmDialog();
   const [lists, setLists] = useState([]);
   const [activeListId, setActiveListId] = useState(null);
@@ -55,6 +55,7 @@ function CalendarShoppingModal({ open, onClose }) {
   const newListRef = useRef(null);
   const skipDraftBlurRef = useRef(false);
   const listNameSnapshotRef = useRef("");
+  const highlightedItemRef = useRef(null);
 
   const activeLists = useMemo(
     () => lists.filter((list) => list.status === "active"),
@@ -126,9 +127,11 @@ function CalendarShoppingModal({ open, onClose }) {
     setDraftOpen(false);
     setDraftName("");
     setMoveMenuItemId(null);
-    bootstrap();
+    bootstrap({
+      preferredListId: preferredListId ? Number(preferredListId) : null,
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, includeClosed]);
+  }, [open, includeClosed, preferredListId]);
 
   useEffect(() => {
     setMoveMenuItemId(null);
@@ -174,6 +177,12 @@ function CalendarShoppingModal({ open, onClose }) {
       newListRef.current.focus();
     }
   }, [creatingList]);
+
+  useEffect(() => {
+    if (!open || !highlightedItemId || !highlightedItemRef.current) return;
+    highlightedItemRef.current.scrollIntoView({ block: "center", behavior: "smooth" });
+    highlightedItemRef.current.focus({ preventScroll: true });
+  }, [activeList, highlightedItemId, open]);
 
   if (!open) return null;
 
@@ -504,7 +513,13 @@ function CalendarShoppingModal({ open, onClose }) {
               {items.map((item) => (
                 <li
                   key={item.id}
-                  className={`calendar-shopping-item${item.purchased ? " is-purchased" : ""}`}
+                  ref={
+                    String(item.id) === String(highlightedItemId) ? highlightedItemRef : undefined
+                  }
+                  tabIndex={String(item.id) === String(highlightedItemId) ? -1 : undefined}
+                  className={`calendar-shopping-item${item.purchased ? " is-purchased" : ""}${
+                    String(item.id) === String(highlightedItemId) ? " is-linked" : ""
+                  }`}
                 >
                   <span className="calendar-shopping-item-name">{item.name}</span>
                   <div className="calendar-shopping-item-actions">

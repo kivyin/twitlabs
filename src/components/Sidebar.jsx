@@ -22,6 +22,7 @@ import { subscribeLcarsPulse } from "../utils/lcarsPulseClock";
 import { applyNavLayout, getNavLayoutCatalog } from "../utils/navLayout";
 import { appNameFromNavPath } from "../utils/roles";
 import { renderFavoriteIcon } from "../utils/favoriteIcons";
+import { isLcarsTheme } from "../utils/theme";
 import {
   buildSidebarHistoryEntries,
   getSidebarHistoryLabel,
@@ -42,6 +43,19 @@ function FavoriteIcon({ favorite, size = 16 }) {
     return <img src={favorite.custom_icon_data} alt="" className="sidebar-favorite-icon-img" />;
   }
   return renderFavoriteIcon(favorite.icon, { size, strokeWidth: 2, "aria-hidden": "true" });
+}
+
+function getFavoriteLinkStyle(color) {
+  const value = String(color || "").trim();
+  if (!/^#[0-9a-f]{6}$/i.test(value)) return undefined;
+  const red = Number.parseInt(value.slice(1, 3), 16);
+  const green = Number.parseInt(value.slice(3, 5), 16);
+  const blue = Number.parseInt(value.slice(5, 7), 16);
+  const luminance = (red * 299 + green * 587 + blue * 114) / 255000;
+  return {
+    "--favorite-color": value,
+    "--favorite-foreground": luminance > 0.58 ? "#0a1020" : "#ffffff",
+  };
 }
 
 function Icon({ path, size = 18 }) {
@@ -202,7 +216,7 @@ function Sidebar({
   const { fullTitle } = useBranding();
   const { resolvedTheme } = useTheme();
   const { navPulseEnabled } = useLcarsEffects();
-  const isLcars = resolvedTheme === "lcars";
+  const isLcars = isLcarsTheme(resolvedTheme);
   const location = useLocation();
   const sidebarRef = useRef(null);
   const [navItems, setNavItems] = useState([]);
@@ -514,16 +528,17 @@ function Sidebar({
                 <div key={favorite.id} className="sidebar-favorite-row">
                   <NavLink
                     to={favorite.path}
-                    className={navItemClass}
+                    className={({ isActive }) =>
+                      `${navItemClass({ isActive })}${
+                        favorite.color ? " has-favorite-color" : ""
+                      }`
+                    }
                     onClick={onNavigate}
                     title={compact ? favorite.label : undefined}
                     aria-label={compact ? favorite.label : undefined}
-                    style={favorite.color ? { "--favorite-color": favorite.color } : undefined}
+                    style={getFavoriteLinkStyle(favorite.color)}
                   >
-                    <span
-                      className="sidebar-favorite-icon"
-                      style={{ color: favorite.color || undefined }}
-                    >
+                    <span className="sidebar-favorite-icon">
                       <FavoriteIcon favorite={favorite} />
                     </span>
                     <span className="sidebar-label">{favorite.label}</span>

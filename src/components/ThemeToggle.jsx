@@ -20,7 +20,12 @@ function Icon({ children, size = 16 }) {
 }
 
 function ThemeIcon({ preference, resolvedTheme }) {
-  if (preference === "lcars" || resolvedTheme === "lcars") {
+  if (
+    preference === "lcars" ||
+    preference === "lcars-v2" ||
+    resolvedTheme === "lcars" ||
+    resolvedTheme === "lcars-v2"
+  ) {
     return (
       <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true">
         <rect x="2" y="5" width="20" height="3" rx="1.5" fill="currentColor" opacity="0.95" />

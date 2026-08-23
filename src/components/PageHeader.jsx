@@ -1,16 +1,19 @@
 import { Fragment, useEffect, useMemo, useRef } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import FavoriteButton from "./FavoriteButton";
+import GlobalSearchBar from "./GlobalSearchBar";
 import HelpButton from "./docs/HelpButton";
 import UserMenuButton from "./UserMenuButton";
 import VersionStatusIndicator from "./VersionStatusIndicator";
 import { LcarsMidBand } from "./LcarsShellChrome";
 import LcarsProgressLight from "./LcarsProgressLight";
+import LcarsV2Submenu from "./LcarsV2Submenu";
 import { useAuth } from "../context/AuthContext";
 import { useBrowseStack } from "../context/BrowseStackContext";
 import { useTheme } from "../context/ThemeContext";
 import { useLcarsEffects } from "../hooks/useLcarsEffects";
 import { usePageHelpFromPath } from "../utils/docHelp";
+import { isLcarsTheme } from "../utils/theme";
 
 function resolveBackFallback(breadcrumbs) {
   if (!Array.isArray(breadcrumbs) || breadcrumbs.length === 0) {
@@ -45,7 +48,8 @@ function PageHeader({
   const { goBack } = useBrowseStack();
   const { resolvedTheme } = useTheme();
   const { progressLightEnabled } = useLcarsEffects();
-  const isLcars = resolvedTheme === "lcars";
+  const isLcars = isLcarsTheme(resolvedTheme);
+  const isLcarsV2 = resolvedTheme === "lcars-v2";
   const backFallback = useMemo(() => resolveBackFallback(breadcrumbs), [breadcrumbs]);
   const displayName = user?.display_name || user?.username || "";
 
@@ -132,6 +136,12 @@ function PageHeader({
             )}
           </div>
           {isLcars && progressLightEnabled ? <LcarsProgressLight /> : null}
+          {isLcarsV2 ? <LcarsV2Submenu /> : null}
+          <div className="page-header-global-search">
+            <GlobalSearchBar
+              key={location.pathname === "/search" ? location.search : location.pathname}
+            />
+          </div>
           <div className="page-header-commands-end page-actions">{commandActions}</div>
         </div>
 

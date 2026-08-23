@@ -1,7 +1,7 @@
 {
   "name": "my-first-react-app",
   "private": true,
-  "version": "1.15",
+  "version": "1.20",
   "type": "module",
   "repository": {
     "type": "git",
@@ -14,6 +14,9 @@
     "postinstall": "node scripts/migrate-schema.mjs",
     "prebuild": "node scripts/migrate-schema.mjs",
     "build": "vite build",
+    "check:global-search": "node scripts/assert-global-search-security.mjs",
+    "check:report-security": "node scripts/assert-report-security.mjs",
+    "check:troublehub-ownership": "node scripts/assert-troublehub-ownership.mjs",
     "lint": "eslint .",
     "preview": "vite preview",
     "serve": "vite preview --host 0.0.0.0 --port 4173 --strictPort"

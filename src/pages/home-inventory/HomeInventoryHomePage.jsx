@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import {
   addHomeInventoryToDinner,
   deleteHomeInventoryItem,
   deleteHomeInventoryLocation,
+  getHomeInventoryItem,
   listHomeInventoryItems,
   listHomeInventoryLocations,
   updateHomeInventoryItem,
@@ -23,6 +25,9 @@ function formatQty(item) {
 
 function HomeInventoryHomePage() {
   const { confirm, confirmModal } = useConfirmDialog();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const linkedItemId = searchParams.get("item");
+  const linkedLocationId = searchParams.get("location");
   const [locations, setLocations] = useState([]);
   const [items, setItems] = useState([]);
   const [totalItems, setTotalItems] = useState(0);
@@ -88,6 +93,36 @@ function HomeInventoryHomePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [search]);
 
+  useEffect(() => {
+    let cancelled = false;
+    if (!linkedItemId) return undefined;
+    getHomeInventoryItem(linkedItemId)
+      .then((result) => {
+        if (cancelled || !result.item) return;
+        setEditingItem(result.item);
+        setItemModalOpen(true);
+      })
+      .catch((loadError) => {
+        if (!cancelled) setError(loadError.message);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [linkedItemId]);
+
+  useEffect(() => {
+    if (!linkedLocationId || locations.length === 0) return;
+    const location = locations.find(
+      (entry) => String(entry.id) === String(linkedLocationId)
+    );
+    if (!location) return;
+    /* eslint-disable react-hooks/set-state-in-effect -- URL-driven one-time modal sync. */
+    setActiveLocationId(String(location.id));
+    setEditingLocation(location);
+    setLocationModalOpen(true);
+    /* eslint-enable react-hooks/set-state-in-effect */
+  }, [linkedLocationId, locations]);
+
   const activeLocation = useMemo(
     () => locations.find((location) => String(location.id) === String(activeLocationId)) || null,
     [locations, activeLocationId]
@@ -101,6 +136,13 @@ function HomeInventoryHomePage() {
   const openEditItem = (item) => {
     setEditingItem(item);
     setItemModalOpen(true);
+  };
+
+  const clearLinkedParams = () => {
+    const next = new URLSearchParams(searchParams);
+    next.delete("item");
+    next.delete("location");
+    setSearchParams(next, { replace: true });
   };
 
   const handleDeleteItem = async (item) => {
@@ -396,7 +438,10 @@ function HomeInventoryHomePage() {
 
       <HomeInventoryItemModal
         open={itemModalOpen}
-        onClose={() => setItemModalOpen(false)}
+        onClose={() => {
+          setItemModalOpen(false);
+          clearLinkedParams();
+        }}
         onSaved={() => load({ nextPage: page })}
         locations={locations}
         item={editingItem}
@@ -406,7 +451,10 @@ function HomeInventoryHomePage() {
       />
       <HomeInventoryLocationModal
         open={locationModalOpen}
-        onClose={() => setLocationModalOpen(false)}
+        onClose={() => {
+          setLocationModalOpen(false);
+          clearLinkedParams();
+        }}
         onSaved={() => load({ nextPage: page })}
         location={editingLocation}
       />

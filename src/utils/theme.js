@@ -1,5 +1,5 @@
 export const THEME_STORAGE_KEY = "twitlabs-theme";
-export const THEME_OPTIONS = ["light", "dark", "lcars", "studiotwitty", "system"];
+export const THEME_OPTIONS = ["light", "dark", "lcars", "lcars-v2", "studiotwitty", "system"];
 
 /** Older installs may still have the pre-rename id stored. */
 function normalizeThemePreference(value) {
@@ -18,8 +18,8 @@ export function getStoredTheme() {
 
 export function resolveTheme(preference = getStoredTheme()) {
   const normalized = normalizeThemePreference(preference);
-  if (normalized === "lcars") {
-    return "lcars";
+  if (normalized === "lcars" || normalized === "lcars-v2") {
+    return normalized;
   }
   if (normalized === "studiotwitty") {
     return "studiotwitty";
@@ -53,6 +53,8 @@ export function applyTheme(preference = getStoredTheme()) {
   if (metaTheme) {
     if (resolved === "lcars") {
       metaTheme.content = "#d2a679";
+    } else if (resolved === "lcars-v2") {
+      metaTheme.content = "#050505";
     } else if (resolved === "studiotwitty") {
       metaTheme.content = "#041820";
     } else if (resolved === "dark") {
@@ -68,6 +70,7 @@ export function applyTheme(preference = getStoredTheme()) {
 export function getThemeLabel(preference) {
   const normalized = normalizeThemePreference(preference);
   if (normalized === "lcars") return "LCARS";
+  if (normalized === "lcars-v2") return "LCARS V2";
   if (normalized === "studiotwitty") return "StudioTwitty";
   if (normalized === "dark") return "Dark";
   if (normalized === "light") return "Light";
@@ -81,7 +84,7 @@ export function getNextTheme(preference) {
 }
 
 export function isLcarsTheme(preferenceOrResolved) {
-  return preferenceOrResolved === "lcars";
+  return preferenceOrResolved === "lcars" || preferenceOrResolved === "lcars-v2";
 }
 
 export function isStudioTwittyTheme(preferenceOrResolved) {

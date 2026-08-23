@@ -1,10 +1,11 @@
 import { useBranding } from "../context/BrandingContext";
 import { useTheme } from "../context/ThemeContext";
+import { isLcarsTheme } from "../utils/theme";
 
 export function BrandMark({ size = 18 }) {
   const { resolvedTheme } = useTheme();
 
-  if (resolvedTheme === "lcars") {
+  if (isLcarsTheme(resolvedTheme)) {
     return (
       <span className="brand-mark brand-mark-lcars" aria-hidden="true">
         <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
@@ -41,7 +42,7 @@ export function AppBrandText({ showShip = true, compact = false }) {
 
   return (
     <span className="app-brand-text">
-      {resolvedTheme === "lcars" && shipName && showShip ? (
+      {isLcarsTheme(resolvedTheme) && shipName && showShip ? (
         <>
           <span className="app-brand-ship sidebar-label">{shipName}</span>
           <span className="app-brand-app subtext sidebar-label">{appName}</span>

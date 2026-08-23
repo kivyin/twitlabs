@@ -515,6 +515,7 @@ const DOC_APPS = {
           field("transaction_date", "Transaction date", "Date the activity occurred."),
           field("payee_id", "Pay to the order of / Payee", "Optional merchant or payer. Can fill category and description."),
           field("amount", "Amount", "Signed amount. Follow form hints for account and category."),
+          field("check_number", "Check number", "Optional for transactions posted to a Bank Checking account. Stored as text so leading zeros are preserved."),
           field("description", "Memo / Description", "Bank memo. Used by payee rules."),
           field("category_id", "Category", "Budget category. Hidden when splits are enabled."),
           field("user_id", "User", "Who owns this transaction."),
