@@ -48,7 +48,7 @@
   --lcars-rail-width: 126px;
   --lcars-v2-command-width: 100px;
   --lcars-v2-brand-row: 38px;
-  --lcars-v2-search-width: min(16rem, 28vw);
+  --lcars-v2-search-width: min(13.5rem, 22vw);
   --font-sans: "Antonio", "Arial Narrow", system-ui, sans-serif;
   --chart-1: #f2e37c;
   --chart-2: #98bef0;
@@ -822,8 +822,9 @@
   display: flex;
   width: 100%;
   min-width: 0;
-  min-height: 12px;
-  align-items: center;
+  min-height: 18px;
+  flex: 0 0 18px;
+  align-items: stretch;
   align-self: stretch;
   padding: 0;
 }
@@ -832,55 +833,44 @@
   position: relative;
   display: block;
   width: 100%;
-  height: 10px;
+  height: 16px;
   overflow: hidden;
-  border: 1px solid color-mix(in srgb, var(--lcars-v2-frame) 42%, #000);
-  background:
-    linear-gradient(
-      90deg,
-      #0b0d12 0%,
-      color-mix(in srgb, var(--lcars-v2-blue) 28%, #0b0d12) 18%,
-      color-mix(in srgb, var(--lcars-v2-cream) 22%, #0b0d12) 42%,
-      color-mix(in srgb, var(--lcars-v2-yellow) 32%, #0b0d12) 68%,
-      #0b0d12 100%
-    );
+  border: 1px solid var(--lcars-v2-frame);
+  background: #12100a;
   box-shadow: inset 0 0 8px rgba(0, 0, 0, 0.85);
 }
 
 [data-theme="lcars-v2"] .lcars-progress-light-track::after {
   content: "";
   position: absolute;
-  top: 0;
-  bottom: 0;
-  left: -35%;
-  width: 35%;
+  top: 1px;
+  bottom: 1px;
+  left: -40%;
+  z-index: 0;
+  width: 40%;
   background: linear-gradient(
     90deg,
-    transparent,
-    color-mix(in srgb, var(--lcars-v2-frame) 80%, #fff) 45%,
-    transparent
+    transparent 0%,
+    color-mix(in srgb, var(--lcars-v2-blue) 70%, transparent) 28%,
+    var(--lcars-v2-frame) 50%,
+    var(--lcars-v2-bright-yellow) 58%,
+    transparent 100%
   );
-  animation: lcars-v2-progress-scan 2.2s linear infinite;
+  animation: lcars-v2-progress-scan 1.7s linear infinite;
 }
 
 [data-theme="lcars-v2"] .lcars-progress-light-blob {
   position: absolute;
   top: 50%;
   z-index: 1;
-  width: 1.45rem;
-  height: 0.34rem;
-  margin-top: -0.17rem;
+  width: 1.7rem;
+  height: 0.55rem;
+  margin-top: -0.28rem;
   border-radius: 0;
-  background: radial-gradient(
-    ellipse at center,
-    #fff8e0 0%,
-    var(--lcars-v2-bright-yellow) 35%,
-    var(--lcars-v2-orange) 68%,
-    transparent 100%
-  );
+  background: var(--lcars-v2-bright-yellow);
   box-shadow:
-    0 0 6px color-mix(in srgb, var(--lcars-v2-yellow) 90%, transparent),
-    0 0 14px color-mix(in srgb, var(--lcars-v2-frame) 55%, transparent);
+    0 0 8px color-mix(in srgb, var(--lcars-v2-yellow) 90%, transparent),
+    0 0 16px color-mix(in srgb, var(--lcars-v2-frame) 70%, transparent);
   opacity: 0;
   transform: translateX(-50%);
 }

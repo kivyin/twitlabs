@@ -97,7 +97,7 @@ function LcarsProgressLight() {
 
   return (
     <div className="lcars-progress-light" aria-hidden="true">
-      <span ref={trackRef} className="lcars-progress-light-track">
+      <div ref={trackRef} className="lcars-progress-light-track">
         <span
           className={`lcars-progress-light-blob lcars-progress-light-blob--left${
             blobState.on ? " is-on" : ""
@@ -110,7 +110,7 @@ function LcarsProgressLight() {
           }`}
           style={{ left: `${blobState.rightPct}%` }}
         />
-      </span>
+      </div>
     </div>
   );
 }

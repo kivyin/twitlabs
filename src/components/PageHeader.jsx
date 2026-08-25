@@ -144,7 +144,7 @@ function PageHeader({
                   key={location.pathname === "/search" ? location.search : location.pathname}
                 />
               </div>
-              {progressLightEnabled ? <LcarsProgressLight /> : null}
+              <LcarsProgressLight />
             </div>
           ) : (
             <div className="page-header-global-search">
