@@ -20,25 +20,12 @@ function applyProgressTick(track, tick, setBlobState) {
   const maxOffset = Math.max(BLOB_WIDTH_PX, width / 2 - edgePad);
   const spacing = BLOB_WIDTH_PX + BLOB_GAP_PX;
   const stationCount = Math.max(2, Math.round(maxOffset / spacing) + 1);
-
-  // ON, OFF, ON next… outer station stays ON until the cycle snaps back.
-  const phaseCount = stationCount * 2 - 1;
-  const phase = tick % phaseCount;
-  let station;
-  let on;
-  if (phase >= phaseCount - 1) {
-    station = stationCount - 1;
-    on = true;
-  } else {
-    station = Math.floor(phase / 2);
-    on = phase % 2 === 0;
-  }
-
-  const offset = stationCount === 1 ? 0 : (station / (stationCount - 1)) * maxOffset;
+  const station = tick % stationCount;
+  const offset = (station / (stationCount - 1)) * maxOffset;
   const leftPct = ((width / 2 - offset) / width) * 100;
   const rightPct = ((width / 2 + offset) / width) * 100;
 
-  setBlobState({ leftPct, rightPct, on });
+  setBlobState({ leftPct, rightPct, on: true });
 }
 
 /**
@@ -97,7 +84,7 @@ function LcarsProgressLight() {
 
   return (
     <div className="lcars-progress-light" aria-hidden="true">
-      <span ref={trackRef} className="lcars-progress-light-track">
+      <div ref={trackRef} className="lcars-progress-light-track">
         <span
           className={`lcars-progress-light-blob lcars-progress-light-blob--left${
             blobState.on ? " is-on" : ""
@@ -110,7 +97,7 @@ function LcarsProgressLight() {
           }`}
           style={{ left: `${blobState.rightPct}%` }}
         />
-      </span>
+      </div>
     </div>
   );
 }
