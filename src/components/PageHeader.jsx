@@ -135,15 +135,28 @@ function PageHeader({
               <span className="page-header-commands-spacer" aria-hidden="true" />
             )}
           </div>
-          {isLcars && progressLightEnabled ? <LcarsProgressLight /> : null}
+          {isLcars && !isLcarsV2 && progressLightEnabled ? <LcarsProgressLight /> : null}
           {isLcarsV2 ? <LcarsV2Submenu /> : null}
-          <div className="page-header-global-search">
-            <GlobalSearchBar
-              key={location.pathname === "/search" ? location.search : location.pathname}
-            />
-          </div>
+          {isLcarsV2 ? (
+            <div className="page-header-search-stack">
+              <div className="page-header-global-search">
+                <GlobalSearchBar
+                  key={location.pathname === "/search" ? location.search : location.pathname}
+                />
+              </div>
+              {progressLightEnabled ? <LcarsProgressLight /> : null}
+            </div>
+          ) : (
+            <div className="page-header-global-search">
+              <GlobalSearchBar
+                key={location.pathname === "/search" ? location.search : location.pathname}
+              />
+            </div>
+          )}
           <div className="page-header-commands-end page-actions">{commandActions}</div>
         </div>
+
+        {isLcarsV2 ? <LcarsMidBand /> : null}
 
         {breadcrumbs.length > 0 && (
           <nav className="breadcrumbs" aria-label="Breadcrumb">
@@ -180,7 +193,7 @@ function PageHeader({
         </div>
         {footer ? <div className="page-header-footer">{footer}</div> : null}
       </header>
-      {isLcars ? <LcarsMidBand /> : null}
+      {isLcars && !isLcarsV2 ? <LcarsMidBand /> : null}
     </>
   );
 }

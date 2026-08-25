@@ -108,6 +108,7 @@ function AppShell({ children }) {
 
             {isLcarsV2 ? (
               <aside className="lcars-v2-command-rail" aria-label="Page command bar">
+                <div className="lcars-v2-command-rail-cap" aria-hidden="true" />
                 <div className="lcars-v2-command-rail-title">
                   <span>Command</span>
                   <strong>Bar</strong>
