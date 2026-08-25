@@ -16,22 +16,20 @@ function LcarsBarStrip({ className, bars }) {
 }
 
 const MID_BARS = [
-  { key: "m1", tone: "orange", width: "18%" },
-  { key: "m2", tone: "blue", width: "28%" },
-  { key: "m3", tone: "tan", width: "14%" },
-  { key: "m4", tone: "peach", flex: true },
-  { key: "m5", tone: "lavender", width: "10%" },
+  { key: "m1", tone: "tan", width: "14%" },
+  { key: "m2", tone: "blue", width: "24%" },
+  { key: "m3", tone: "tan", width: "16%" },
+  { key: "m4", tone: "yellow", flex: true },
+  { key: "m5", tone: "blue", width: "11%" },
 ];
 
 const FOOT_BARS = [
-  { key: "f1", tone: "orange", width: "12%" },
-  { key: "f2", tone: "blue", width: "16%" },
-  { key: "f3", tone: "gold", width: "9%" },
-  { key: "f4", tone: "violet", width: "11%" },
-  { key: "f5", tone: "teal", width: "8%" },
-  { key: "f6", tone: "red", width: "7%" },
-  { key: "f7", tone: "tan", flex: true },
-  { key: "f8", tone: "lavender", width: "10%" },
+  { key: "f1", tone: "blue", width: "16%" },
+  { key: "f2", tone: "tan", width: "20%" },
+  { key: "f3", tone: "yellow", width: "10%" },
+  { key: "f4", tone: "tan", flex: true },
+  { key: "f5", tone: "blue", width: "12%" },
+  { key: "f6", tone: "yellow", width: "8%" },
 ];
 
 const WEEKDAYS = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];

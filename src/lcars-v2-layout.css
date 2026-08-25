@@ -50,17 +50,54 @@
   flex: 0 0 auto !important;
 }
 
+[data-theme="lcars-v2"] .sidebar-lcars .sidebar-mode-tab,
+[data-theme="lcars-v2"] .sidebar-lcars .sidebar-link {
+  min-height: 32px !important;
+  font-size: 0.95rem !important;
+}
+
+[data-theme="lcars-v2"] .sidebar-lcars .sidebar-mode-tab {
+  min-height: 24px !important;
+  font-size: 0.88rem !important;
+}
+
+[data-theme="lcars-v2"] .sidebar-lcars .sidebar-nav {
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  padding-top: 2px !important;
+}
+
+[data-theme="lcars-v2"] .sidebar-lcars .sidebar-group-toggle,
+[data-theme="lcars-v2"] .sidebar-lcars .sidebar-group-toggle-placeholder {
+  display: none !important;
+}
+
+[data-theme="lcars-v2"] .lcars-v2-submenu-link {
+  font-size: 0.84rem !important;
+}
+
 [data-theme="lcars-v2"] .lcars-progress-light {
   display: flex !important;
   width: 100% !important;
-  min-height: 18px !important;
-  flex: 0 0 18px !important;
+  min-height: 14px !important;
+  flex: 0 0 14px !important;
 }
 
 [data-theme="lcars-v2"] .lcars-progress-light-track {
   display: block !important;
   width: 100% !important;
-  height: 16px !important;
+  height: 12px !important;
+}
+
+[data-theme="lcars-v2"] .lcars-progress-light-track::after {
+  content: none !important;
+  display: none !important;
+  animation: none !important;
+}
+
+[data-theme="lcars-v2"] .shell-inner {
+  padding-left: 0 !important;
+  padding-right: 0 !important;
 }
 
 [data-theme="lcars-v2"] .shell-inner > .page-header,
@@ -76,11 +113,41 @@
   overflow: visible !important;
 }
 
+[data-theme="lcars-v2"] .page-header-row,
+[data-theme="lcars-v2"] .breadcrumbs {
+  border: 0 !important;
+  border-bottom: 0 !important;
+}
+
 [data-theme="lcars-v2"] .breadcrumbs {
   display: flex !important;
   overflow: visible !important;
   min-height: 1.6rem !important;
   padding-top: 8px !important;
+}
+
+[data-theme="lcars-v2"] .lcars-mid-band,
+[data-theme="lcars-v2"] .lcars-foot-band {
+  display: flex !important;
+  flex-wrap: nowrap !important;
+  align-items: stretch !important;
+  height: 16px !important;
+  gap: 3px !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+  background: #000 !important;
+}
+
+[data-theme="lcars-v2"] .lcars-mid-bars {
+  display: flex !important;
+  flex-wrap: nowrap !important;
+  height: 100% !important;
+  gap: 3px !important;
+}
+
+[data-theme="lcars-v2"] .lcars-strip-bar {
+  height: 100% !important;
+  border-radius: 0 !important;
 }
 
 [data-theme="lcars-v2"] .page-header-version-menu,
