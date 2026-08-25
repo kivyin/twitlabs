@@ -3,9 +3,11 @@
 @import "tailwindcss";
 @import "./index.css" layer(legacy);
 @import "./lcars.css" layer(legacy);
-@import "./lcars-v2.css" layer(legacy);
 @import "./ironman.css" layer(legacy);
 @import "./App.css" layer(legacy);
+/* After App.css so LCARS V2 layout rules win equal-specificity shell/header styles. */
+@import "./lcars-v2.css" layer(legacy);
+@import "./lcars-v2-layout.css";
 
 @custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
 @custom-variant lcars (&:where([data-theme="lcars"], [data-theme="lcars"] *));

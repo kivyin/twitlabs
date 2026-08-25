@@ -1,0 +1,89 @@
+/*
+  Unlayered LCARS V2 layout overrides.
+  These sit outside @layer so they beat App.css and Tailwind utilities.
+*/
+[data-theme="lcars-v2"] .sidebar-lcars,
+[data-theme="lcars-v2"] .sidebar-lcars::before,
+[data-theme="lcars-v2"] .sidebar-lcars .sidebar-mode-tab,
+[data-theme="lcars-v2"] .sidebar-lcars .sidebar-link,
+[data-theme="lcars-v2"] .sidebar-lcars .sidebar-foot,
+[data-theme="lcars-v2"] .lcars-v2-command-rail-cap,
+[data-theme="lcars-v2"] .lcars-v2-command-rail-title,
+[data-theme="lcars-v2"] .lcars-v2-command-block--yellow,
+[data-theme="lcars-v2"] .browse-back-button,
+[data-theme="lcars-v2"] .global-search-bar,
+[data-theme="lcars-v2"] .global-search-bar button[type="submit"] {
+  border-radius: 0 !important;
+}
+
+[data-theme="lcars-v2"] .lcars-frame-brand,
+[data-theme="lcars-v2"] .lcars-frame-brand-title,
+[data-theme="lcars-v2"] .sidebar-lcars::before,
+[data-theme="lcars-v2"] .lcars-v2-command-rail-cap,
+[data-theme="lcars-v2"] .lcars-v2-command-rail-title,
+[data-theme="lcars-v2"] .lcars-v2-command-block--yellow {
+  background: #f6f1c5 !important;
+}
+
+[data-theme="lcars-v2"] .lcars-frame-brand-title {
+  color: #1a1408 !important;
+  border: 0 !important;
+}
+
+[data-theme="lcars-v2"] .lcars-frame-brand-bar--lead {
+  display: none !important;
+}
+
+[data-theme="lcars-v2"] .page-header-search-stack {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: stretch !important;
+  justify-content: flex-start !important;
+  gap: 6px !important;
+  min-width: 0 !important;
+}
+
+[data-theme="lcars-v2"] .page-header-global-search,
+[data-theme="lcars-v2"] .global-search-bar {
+  width: 100% !important;
+  max-width: none !important;
+  flex: 0 0 auto !important;
+}
+
+[data-theme="lcars-v2"] .lcars-progress-light {
+  display: flex !important;
+  width: 100% !important;
+  min-height: 18px !important;
+  flex: 0 0 18px !important;
+}
+
+[data-theme="lcars-v2"] .lcars-progress-light-track {
+  display: block !important;
+  width: 100% !important;
+  height: 16px !important;
+}
+
+[data-theme="lcars-v2"] .shell-inner > .page-header,
+[data-theme="lcars-v2"] .shell-inner > .account-edit-overview,
+[data-theme="lcars-v2"] .shell-inner > .lcars-mid-band {
+  width: 100% !important;
+  max-width: 100% !important;
+  margin-left: 0 !important;
+  margin-right: 0 !important;
+}
+
+[data-theme="lcars-v2"] .page-header {
+  overflow: visible !important;
+}
+
+[data-theme="lcars-v2"] .breadcrumbs {
+  display: flex !important;
+  overflow: visible !important;
+  min-height: 1.6rem !important;
+  padding-top: 8px !important;
+}
+
+[data-theme="lcars-v2"] .page-header-version-menu,
+[data-theme="lcars-v2"] .version-menu {
+  flex-shrink: 0 !important;
+}
