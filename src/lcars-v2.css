@@ -396,8 +396,13 @@
 
 [data-theme="lcars-v2"] .lcars-v2-command-rail-cap {
   display: block;
+  width: 100%;
   height: var(--lcars-v2-brand-row);
+  min-height: var(--lcars-v2-brand-row);
+  max-height: var(--lcars-v2-brand-row);
   flex: 0 0 var(--lcars-v2-brand-row);
+  align-self: stretch;
+  box-sizing: border-box;
   border-radius: 0;
   background: var(--lcars-v2-frame);
 }
@@ -706,7 +711,7 @@
   flex-wrap: wrap;
   flex-shrink: 0;
   gap: 4px;
-  padding-right: 2px;
+  padding-right: 0.4rem;
 }
 
 [data-theme="lcars-v2"] .page-header-version-menu,
